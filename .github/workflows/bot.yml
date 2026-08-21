@@ -22,4 +22,5 @@ jobs:
       - name: Ejecutar bot
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          EREPUBLIK_COOKIE: ${{ secrets.EREPUBLIK_COOKIE }}
         run: python bot.py
