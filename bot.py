@@ -194,6 +194,12 @@ def extraer_divisiones(data):
         )
 
     for item in divisiones:
+
+        # Algunos elementos pueden no ser diccionarios.
+        # Los ignoramos.
+        if not isinstance(item, dict):
+            continue
+
         division_id = item.get("division")
 
         if division_id not in DIVISIONES:
@@ -201,12 +207,19 @@ def extraer_divisiones(data):
 
         countries = item.get("countries", {})
 
+        if not isinstance(countries, dict):
+            continue
+
         if len(countries) < 2:
             continue
 
         paises = []
 
         for country_id, info in countries.items():
+
+            if not isinstance(info, dict):
+                continue
+
             wall = info.get("wall")
 
             if wall is None:
@@ -223,8 +236,8 @@ def extraer_divisiones(data):
         resultado[division_id] = {
             "nombre": DIVISIONES[division_id],
             "paises": paises,
-            "dominating_country": (
-                item.get("dominatingCountry")
+            "dominating_country": item.get(
+                "dominatingCountry"
             ),
             "battle_zone_id": item.get("id"),
         }
