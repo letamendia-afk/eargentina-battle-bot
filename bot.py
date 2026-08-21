@@ -1,5 +1,5 @@
 import os
-import json
+import re
 import requests
 
 from telegram import Update
@@ -12,9 +12,6 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 BATTLE_ID = 930049
 
-INITIAL_DIVISION = 11
-INITIAL_ZONE_ID = 41368335
-
 DIVISIONES = {
     3: "D3",
     4: "D4",
@@ -23,98 +20,216 @@ DIVISIONES = {
 
 
 # ============================================================
-# EREPUBLIK
+# SESIÓN EREPUBLIK
 # ============================================================
 
-def crear_headers(battle_id):
+def crear_sesion():
     cookie = os.getenv("EREPUBLIK_COOKIE")
 
     if not cookie:
         raise ValueError("No se encontró EREPUBLIK_COOKIE")
 
-    return {
+    session = requests.Session()
+
+    session.headers.update({
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/151.0.0.0 Safari/537.36"
         ),
+        "Accept": "application/json, text/plain, */*",
         "X-Requested-With": "XMLHttpRequest",
-        "Referer": (
-            f"https://www.erepublik.com/en/military/"
-            f"battlefield/{battle_id}"
-        ),
-        "Accept": "application/json, text/javascript, */*; q=0.01",
         "Cookie": cookie.strip(),
-    }
+    })
+
+    return session
 
 
-def consultar_zona(battle_id, division, zone_id):
+# ============================================================
+# OBTENER CSRF TOKEN
+# ============================================================
+
+def obtener_csrf_token(session, battle_id):
     url = (
         f"https://www.erepublik.com/en/military/"
-        f"battle-stats/{battle_id}/{division}/{zone_id}"
+        f"battlefield/{battle_id}"
     )
 
-    response = requests.get(
+    response = session.get(
         url,
-        headers=crear_headers(battle_id),
-        timeout=15,
+        timeout=15
     )
 
-    data = response.json()
+    if response.status_code != 200:
+        raise ValueError(
+            f"No pude abrir la batalla. HTTP {response.status_code}"
+        )
+
+    html = response.text
+
+    patron = r"var csrfToken\s*=\s*'([^']+)'"
+    match = re.search(patron, html)
+
+    if not match:
+        raise ValueError(
+            "No encontré csrfToken en la página."
+        )
+
+    return match.group(1)
+
+
+# ============================================================
+# BUSCAR BATTLE ZONE INICIAL
+# ============================================================
+
+def obtener_battle_zone_inicial(session, battle_id):
+    """
+    Busca una battle zone desde la página principal.
+    La idea es obtener un ID válido para poder llamar
+    battle-console.
+    """
+
+    url = (
+        f"https://www.erepublik.com/en/military/"
+        f"battlefield/{battle_id}"
+    )
+
+    response = session.get(
+        url,
+        timeout=15
+    )
+
+    html = response.text
+
+    # Busca posibles battleZoneId en el HTML
+    candidatos = re.findall(
+        r'"battleZoneId"\s*:\s*(\d+)',
+        html
+    )
+
+    if candidatos:
+        return int(candidatos[0])
+
+    # Segunda forma posible
+    candidatos = re.findall(
+        r'battleZoneId["\']?\s*[:=]\s*["\']?(\d+)',
+        html
+    )
+
+    if candidatos:
+        return int(candidatos[0])
+
+    raise ValueError(
+        "No encontré battleZoneId en la página."
+    )
+
+
+# ============================================================
+# LLAMAR BATTLE CONSOLE
+# ============================================================
+
+def consultar_battle_console(
+    session,
+    battle_id,
+    battle_zone_id,
+    csrf_token
+):
+    url = (
+        "https://www.erepublik.com/en/military/"
+        "battle-console"
+    )
+
+    payload = {
+        "battleId": battle_id,
+        "zoneId": 7,
+        "action": "battleConsole",
+        "battleZoneId": battle_zone_id,
+        "_token": csrf_token,
+    }
+
+    headers = {
+        "Referer": (
+            f"https://www.erepublik.com/en/military/"
+            f"battlefield/{battle_id}/0/currentBattleZone"
+        ),
+        "Content-Type": (
+            "application/x-www-form-urlencoded"
+        ),
+    }
+
+    response = session.post(
+        url,
+        data=payload,
+        headers=headers,
+        timeout=15
+    )
+
+    try:
+        data = response.json()
+    except ValueError:
+        raise ValueError(
+            "battle-console no devolvió JSON."
+        )
 
     if "error" in data:
         raise ValueError(
-            f"eRepublik devolvió: {data['error']}"
+            f"battle-console devolvió: {data['error']}"
         )
 
     return data
 
 
-def buscar_zonas(objeto, zonas=None):
-    if zonas is None:
-        zonas = {}
+# ============================================================
+# EXTRAER DIVISIONES
+# ============================================================
 
-    if isinstance(objeto, dict):
+def extraer_divisiones(data):
+    resultado = {}
 
-        if (
-            "battle_zone_id" in objeto
-            and "division" in objeto
-        ):
-            division = objeto.get("division")
-            zone_id = objeto.get("battle_zone_id")
+    divisiones = data.get("division", [])
 
-            if division in DIVISIONES:
-                zonas[division] = zone_id
-
-        for valor in objeto.values():
-            buscar_zonas(valor, zonas)
-
-    elif isinstance(objeto, list):
-
-        for elemento in objeto:
-            buscar_zonas(elemento, zonas)
-
-    return zonas
-
-
-def obtener_porcentaje(battle_id, division, zone_id):
-    data = consultar_zona(
-        battle_id,
-        division,
-        zone_id,
-    )
-
-    division_data = data.get("division", {})
-    domination = division_data.get("domination", {})
-
-    porcentaje = domination.get(str(zone_id))
-
-    if porcentaje is None:
+    if not isinstance(divisiones, list):
         raise ValueError(
-            f"No encontré domination para {zone_id}"
+            "La estructura de 'division' no es una lista."
         )
 
-    return float(porcentaje)
+    for item in divisiones:
+        division_id = item.get("division")
+
+        if division_id not in DIVISIONES:
+            continue
+
+        countries = item.get("countries", {})
+
+        if len(countries) < 2:
+            continue
+
+        paises = []
+
+        for country_id, info in countries.items():
+            wall = info.get("wall")
+
+            if wall is None:
+                continue
+
+            paises.append({
+                "country_id": int(country_id),
+                "wall": float(wall),
+            })
+
+        if len(paises) != 2:
+            continue
+
+        resultado[division_id] = {
+            "nombre": DIVISIONES[division_id],
+            "paises": paises,
+            "dominating_country": (
+                item.get("dominatingCountry")
+            ),
+            "battle_zone_id": item.get("id"),
+        }
+
+    return resultado
 
 
 # ============================================================
@@ -128,8 +243,7 @@ async def start(
     await update.message.reply_text(
         "🇦🇷 eArgentina Battle Bot\n\n"
         "/estado - Estado del bot\n"
-        "/test - Leer D3, D4 y Air\n"
-        "/inspect - Investigar países y score\n"
+        "/test - Leer batalla completa\n"
         "/ayuda - Ver comandos"
     )
 
@@ -141,8 +255,8 @@ async def estado(
     await update.message.reply_text(
         "🇦🇷 eArgentina Battle Bot\n\n"
         "✅ Bot funcionando\n"
-        "✅ Conexión autenticada con eRepublik\n"
-        "✅ Lectura D3 / D4 / Air funcionando"
+        "✅ eRepublik autenticado\n"
+        "✅ battle-console configurado"
     )
 
 
@@ -151,44 +265,58 @@ async def test(
     context: ContextTypes.DEFAULT_TYPE
 ):
     try:
+        session = crear_sesion()
 
-        data_inicial = consultar_zona(
-            BATTLE_ID,
-            INITIAL_DIVISION,
-            INITIAL_ZONE_ID,
+        csrf_token = obtener_csrf_token(
+            session,
+            BATTLE_ID
         )
 
-        zonas = buscar_zonas(data_inicial)
+        battle_zone_id = obtener_battle_zone_inicial(
+            session,
+            BATTLE_ID
+        )
+
+        data = consultar_battle_console(
+            session,
+            BATTLE_ID,
+            battle_zone_id,
+            csrf_token
+        )
+
+        divisiones = extraer_divisiones(data)
 
         mensaje = (
-            "🔎 Batalla detectada\n\n"
+            "🧪 Lectura battle-console\n\n"
             f"Battle ID: {BATTLE_ID}\n\n"
         )
 
         for division_id in [3, 4, 11]:
+            division = divisiones.get(division_id)
 
-            nombre = DIVISIONES[division_id]
-            zone_id = zonas.get(division_id)
-
-            if not zone_id:
+            if not division:
                 mensaje += (
-                    f"⚠️ {nombre}: zona no encontrada\n"
+                    f"⚠️ {DIVISIONES[division_id]} "
+                    "no encontrada\n\n"
                 )
                 continue
 
-            porcentaje_a = obtener_porcentaje(
-                BATTLE_ID,
-                division_id,
-                zone_id,
-            )
+            nombre = division["nombre"]
+            paises = division["paises"]
 
-            porcentaje_b = 100 - porcentaje_a
+            mensaje += f"{nombre}\n"
+
+            for pais in paises:
+                mensaje += (
+                    f"País {pais['country_id']}: "
+                    f"{pais['wall']:.2f}%\n"
+                )
 
             mensaje += (
-                f"{nombre}\n"
-                f"🔵 {porcentaje_a:.2f}%"
-                f" | 🔴 {porcentaje_b:.2f}%\n"
-                f"Zone: {zone_id}\n\n"
+                f"Dominando: "
+                f"{division['dominating_country']}\n"
+                f"Zone: "
+                f"{division['battle_zone_id']}\n\n"
             )
 
         mensaje += (
@@ -200,98 +328,12 @@ async def test(
         await update.message.reply_text(mensaje)
 
     except Exception as e:
-
         await update.message.reply_text(
-            "❌ Error analizando la batalla\n\n"
+            "❌ Error\n\n"
             f"{type(e).__name__}: {e}"
         )
 
 
-# ============================================================
-# /inspect
-# ============================================================
-
-async def inspect(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    try:
-        data = consultar_zona(
-            BATTLE_ID,
-            INITIAL_DIVISION,
-            INITIAL_ZONE_ID,
-        )
-
-        palabras = [
-            "country",
-            "score",
-            "attacker",
-            "defender",
-            "points",
-            "side",
-            "winner",
-        ]
-
-        encontrados = []
-
-        def buscar(objeto, ruta="root"):
-            if isinstance(objeto, dict):
-
-                for clave, valor in objeto.items():
-
-                    nueva_ruta = f"{ruta}.{clave}"
-
-                    clave_lower = str(clave).lower()
-
-                    if any(
-                        palabra in clave_lower
-                        for palabra in palabras
-                    ):
-                        # Evitamos imprimir estructuras enormes
-                        if isinstance(valor, (dict, list)):
-                            resumen = str(valor)[:250]
-                        else:
-                            resumen = str(valor)
-
-                        encontrados.append(
-                            f"{nueva_ruta} = {resumen}"
-                        )
-
-                    buscar(valor, nueva_ruta)
-
-            elif isinstance(objeto, list):
-
-                for i, elemento in enumerate(objeto):
-                    buscar(
-                        elemento,
-                        f"{ruta}[{i}]"
-                    )
-
-        buscar(data)
-
-        if not encontrados:
-            await update.message.reply_text(
-                "⚠️ No encontré campos relacionados "
-                "con países o score."
-            )
-            return
-
-        texto = "\n\n".join(encontrados)
-
-        if len(texto) > 3800:
-            texto = texto[:3800] + "\n\n... [recortado]"
-
-        await update.message.reply_text(
-            "🔬 CAMPOS ENCONTRADOS\n\n"
-            f"{texto}"
-        )
-
-    except Exception as e:
-
-        await update.message.reply_text(
-            "❌ Error inspeccionando batalla\n\n"
-            f"{type(e).__name__}: {e}"
-        )
 async def ayuda(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -300,8 +342,7 @@ async def ayuda(
         "🇦🇷 eArgentina Battle Bot\n\n"
         "/start - Iniciar bot\n"
         "/estado - Estado del bot\n"
-        "/test - Leer barras\n"
-        "/inspect - Investigar países y score\n"
+        "/test - Leer battle-console\n"
         "/ayuda - Ver ayuda"
     )
 
@@ -311,8 +352,9 @@ async def ayuda(
 # ============================================================
 
 def main():
-
-    telegram_token = os.getenv("TELEGRAM_TOKEN")
+    telegram_token = os.getenv(
+        "TELEGRAM_TOKEN"
+    )
 
     if not telegram_token:
         raise ValueError(
@@ -326,11 +368,21 @@ def main():
         .build()
     )
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("estado", estado))
-    app.add_handler(CommandHandler("test", test))
-    app.add_handler(CommandHandler("inspect", inspect))
-    app.add_handler(CommandHandler("ayuda", ayuda))
+    app.add_handler(
+        CommandHandler("start", start)
+    )
+
+    app.add_handler(
+        CommandHandler("estado", estado)
+    )
+
+    app.add_handler(
+        CommandHandler("test", test)
+    )
+
+    app.add_handler(
+        CommandHandler("ayuda", ayuda)
+    )
 
     print("eArgentina Battle Bot iniciado...")
 
