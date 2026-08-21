@@ -39,31 +39,16 @@ async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         data = response.json()
 
-        division = data.get("division", {})
-        domination = division.get("domination", {})
-
-        if not domination:
-            await update.message.reply_text(
-                "⚠️ La respuesta llegó, pero no encontré domination."
-            )
-            return
-
-        porcentaje = list(domination.values())[0]
-        contrario = 100 - porcentaje
-
         await update.message.reply_text(
-            "🧪 Prueba eRepublik\n\n"
-            f"AIR\n"
-            f"🔵 {porcentaje:.2f}%\n"
-            f"🔴 {contrario:.2f}%"
+            "🧪 Respuesta recibida correctamente\n\n"
+            f"Claves principales:\n"
+            f"{list(data.keys())}"
         )
 
     except Exception as e:
         await update.message.reply_text(
             f"❌ Error: {type(e).__name__}: {e}"
         )
-
-
 async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🇦🇷 eArgentina Battle Bot\n\n"
