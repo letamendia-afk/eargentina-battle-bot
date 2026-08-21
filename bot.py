@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 
 from telegram import Update
@@ -11,8 +12,6 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 BATTLE_ID = 930049
 
-# Solo necesitamos una zona conocida para obtener
-# inicialmente la información de la batalla.
 INITIAL_DIVISION = 11
 INITIAL_ZONE_ID = 41368335
 
@@ -24,7 +23,7 @@ DIVISIONES = {
 
 
 # ============================================================
-# FUNCIONES EREPUBLIK
+# EREPUBLIK
 # ============================================================
 
 def crear_headers(battle_id):
@@ -72,11 +71,6 @@ def consultar_zona(battle_id, division, zone_id):
 
 
 def buscar_zonas(objeto, zonas=None):
-    """
-    Recorre recursivamente todo el JSON buscando objetos
-    que tengan battle_zone_id y division.
-    """
-
     if zonas is None:
         zonas = {}
 
@@ -134,7 +128,8 @@ async def start(
     await update.message.reply_text(
         "🇦🇷 eArgentina Battle Bot\n\n"
         "/estado - Estado del bot\n"
-        "/test - Analizar batalla de prueba\n"
+        "/test - Leer D3, D4 y Air\n"
+        "/inspect - Investigar países y score\n"
         "/ayuda - Ver comandos"
     )
 
@@ -146,7 +141,8 @@ async def estado(
     await update.message.reply_text(
         "🇦🇷 eArgentina Battle Bot\n\n"
         "✅ Bot funcionando\n"
-        "✅ Conexión con eRepublik configurada"
+        "✅ Conexión autenticada con eRepublik\n"
+        "✅ Lectura D3 / D4 / Air funcionando"
     )
 
 
@@ -156,14 +152,12 @@ async def test(
 ):
     try:
 
-        # 1. Obtenemos una respuesta de la batalla
         data_inicial = consultar_zona(
             BATTLE_ID,
             INITIAL_DIVISION,
             INITIAL_ZONE_ID,
         )
 
-        # 2. Buscamos automáticamente D3, D4 y AIR
         zonas = buscar_zonas(data_inicial)
 
         mensaje = (
@@ -171,41 +165,31 @@ async def test(
             f"Battle ID: {BATTLE_ID}\n\n"
         )
 
-        # 3. Consultamos cada división encontrada
         for division_id in [3, 4, 11]:
 
             nombre = DIVISIONES[division_id]
-
             zone_id = zonas.get(division_id)
 
             if not zone_id:
                 mensaje += (
-                    f"⚠️ {nombre}: "
-                    "zona no encontrada\n"
+                    f"⚠️ {nombre}: zona no encontrada\n"
                 )
                 continue
 
-            try:
-                porcentaje_a = obtener_porcentaje(
-                    BATTLE_ID,
-                    division_id,
-                    zone_id,
-                )
+            porcentaje_a = obtener_porcentaje(
+                BATTLE_ID,
+                division_id,
+                zone_id,
+            )
 
-                porcentaje_b = 100 - porcentaje_a
+            porcentaje_b = 100 - porcentaje_a
 
-                mensaje += (
-                    f"{nombre}\n"
-                    f"🔵 {porcentaje_a:.2f}%"
-                    f" | "
-                    f"🔴 {porcentaje_b:.2f}%\n"
-                    f"Zone: {zone_id}\n\n"
-                )
-
-            except Exception as e:
-                mensaje += (
-                    f"❌ {nombre}: {e}\n\n"
-                )
+            mensaje += (
+                f"{nombre}\n"
+                f"🔵 {porcentaje_a:.2f}%"
+                f" | 🔴 {porcentaje_b:.2f}%\n"
+                f"Zone: {zone_id}\n\n"
+            )
 
         mensaje += (
             "🔗 "
@@ -223,6 +207,54 @@ async def test(
         )
 
 
+# ============================================================
+# /inspect
+# ============================================================
+
+async def inspect(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    try:
+
+        data = consultar_zona(
+            BATTLE_ID,
+            INITIAL_DIVISION,
+            INITIAL_ZONE_ID,
+        )
+
+        campaigns = data.get("campaigns")
+        situation = data.get("battle_zone_situation")
+
+        resultado = {
+            "campaigns": campaigns,
+            "battle_zone_situation": situation,
+        }
+
+        texto = json.dumps(
+            resultado,
+            indent=2,
+            ensure_ascii=False
+        )
+
+        # Telegram limita el tamaño de los mensajes.
+        # Para esta prueba solo mostramos los primeros caracteres.
+        if len(texto) > 3500:
+            texto = texto[:3500] + "\n... [recortado]"
+
+        await update.message.reply_text(
+            "🔬 INSPECCIÓN DE BATALLA\n\n"
+            f"{texto}"
+        )
+
+    except Exception as e:
+
+        await update.message.reply_text(
+            "❌ Error inspeccionando batalla\n\n"
+            f"{type(e).__name__}: {e}"
+        )
+
+
 async def ayuda(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
@@ -231,7 +263,8 @@ async def ayuda(
         "🇦🇷 eArgentina Battle Bot\n\n"
         "/start - Iniciar bot\n"
         "/estado - Estado del bot\n"
-        "/test - Leer D3, D4 y Air\n"
+        "/test - Leer barras\n"
+        "/inspect - Investigar países y score\n"
         "/ayuda - Ver ayuda"
     )
 
@@ -259,6 +292,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("estado", estado))
     app.add_handler(CommandHandler("test", test))
+    app.add_handler(CommandHandler("inspect", inspect))
     app.add_handler(CommandHandler("ayuda", ayuda))
 
     print("eArgentina Battle Bot iniciado...")
