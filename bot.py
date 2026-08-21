@@ -216,34 +216,73 @@ async def inspect(
     context: ContextTypes.DEFAULT_TYPE
 ):
     try:
-
         data = consultar_zona(
             BATTLE_ID,
             INITIAL_DIVISION,
             INITIAL_ZONE_ID,
         )
 
-        campaigns = data.get("campaigns")
-        situation = data.get("battle_zone_situation")
+        palabras = [
+            "country",
+            "score",
+            "attacker",
+            "defender",
+            "points",
+            "side",
+            "winner",
+        ]
 
-        resultado = {
-            "campaigns": campaigns,
-            "battle_zone_situation": situation,
-        }
+        encontrados = []
 
-        texto = json.dumps(
-            resultado,
-            indent=2,
-            ensure_ascii=False
-        )
+        def buscar(objeto, ruta="root"):
+            if isinstance(objeto, dict):
 
-        # Telegram limita el tamaño de los mensajes.
-        # Para esta prueba solo mostramos los primeros caracteres.
-        if len(texto) > 3500:
-            texto = texto[:3500] + "\n... [recortado]"
+                for clave, valor in objeto.items():
+
+                    nueva_ruta = f"{ruta}.{clave}"
+
+                    clave_lower = str(clave).lower()
+
+                    if any(
+                        palabra in clave_lower
+                        for palabra in palabras
+                    ):
+                        # Evitamos imprimir estructuras enormes
+                        if isinstance(valor, (dict, list)):
+                            resumen = str(valor)[:250]
+                        else:
+                            resumen = str(valor)
+
+                        encontrados.append(
+                            f"{nueva_ruta} = {resumen}"
+                        )
+
+                    buscar(valor, nueva_ruta)
+
+            elif isinstance(objeto, list):
+
+                for i, elemento in enumerate(objeto):
+                    buscar(
+                        elemento,
+                        f"{ruta}[{i}]"
+                    )
+
+        buscar(data)
+
+        if not encontrados:
+            await update.message.reply_text(
+                "⚠️ No encontré campos relacionados "
+                "con países o score."
+            )
+            return
+
+        texto = "\n\n".join(encontrados)
+
+        if len(texto) > 3800:
+            texto = texto[:3800] + "\n\n... [recortado]"
 
         await update.message.reply_text(
-            "🔬 INSPECCIÓN DE BATALLA\n\n"
+            "🔬 CAMPOS ENCONTRADOS\n\n"
             f"{texto}"
         )
 
@@ -253,8 +292,6 @@ async def inspect(
             "❌ Error inspeccionando batalla\n\n"
             f"{type(e).__name__}: {e}"
         )
-
-
 async def ayuda(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
