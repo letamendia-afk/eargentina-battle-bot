@@ -1,4 +1,5 @@
 import os
+import html
 import requests
 
 from telegram import Update
@@ -9,12 +10,15 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 # CONFIGURACIÓN
 # ============================================================
 
-BATTLE_ID = 931103
+ARGENTINA_ID = 27
+
+# Batalla conocida para mantener /test como control.
+BATTLE_ID_TEST = 931103
 
 DIVISIONES = {
     3: "D3",
     4: "D4",
-    11: "AIR",
+    11: "A",
 }
 
 
@@ -101,7 +105,7 @@ PAISES = {
 
 
 # ============================================================
-# COOKIE Y HEADERS
+# COOKIE / HEADERS
 # ============================================================
 
 def obtener_cookie():
@@ -116,7 +120,6 @@ def obtener_cookie():
 
 
 def headers_ajax():
-
     return {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -137,11 +140,10 @@ def headers_ajax():
 
 
 # ============================================================
-# CAMPAIGNS JSON
+# CONSULTAR CAMPAÑAS
 # ============================================================
 
 def consultar_campanas():
-
     url = (
         "https://www.erepublik.com/"
         "en/military/campaignsJson/list"
@@ -153,16 +155,66 @@ def consultar_campanas():
         timeout=20
     )
 
-    try:
-        data = response.json()
-
-    except ValueError:
+    if response.status_code != 200:
         raise ValueError(
-            f"campaignsJson/list no devolvió JSON. "
+            f"campaignsJson/list respondió "
             f"HTTP {response.status_code}"
         )
 
+    try:
+        data = response.json()
+    except ValueError:
+        raise ValueError(
+            "campaignsJson/list no devolvió JSON"
+        )
+
     return data
+
+
+# ============================================================
+# ENCONTRAR OBJETOS DE BATALLA
+# ============================================================
+
+def obtener_batallas(data):
+    resultado = {}
+
+    def recorrer(valor):
+        if isinstance(valor, dict):
+
+            for clave, contenido in valor.items():
+
+                if (
+                    isinstance(contenido, dict)
+                    and str(clave).isdigit()
+                    and isinstance(
+                        contenido.get("inv"),
+                        dict
+                    )
+                    and isinstance(
+                        contenido.get("def"),
+                        dict
+                    )
+                ):
+                    try:
+                        battle_id = int(clave)
+
+                        resultado[
+                            battle_id
+                        ] = contenido
+
+                    except ValueError:
+                        pass
+
+                recorrer(contenido)
+
+        elif isinstance(valor, list):
+
+            for item in valor:
+                recorrer(item)
+
+    recorrer(data)
+
+    return resultado
 
 
 # ============================================================
@@ -170,60 +222,10 @@ def consultar_campanas():
 # ============================================================
 
 def buscar_batalla(data, battle_id):
+    batallas = obtener_batallas(data)
 
-    battle_id_str = str(
-        battle_id
-    )
-
-    # A veces el objeto puede venir directamente
-    if (
-        isinstance(data, dict)
-        and battle_id_str in data
-    ):
-        return data[
-            battle_id_str
-        ]
-
-    # Por si viene anidado
-    def recorrer(valor):
-
-        if isinstance(valor, dict):
-
-            if battle_id_str in valor:
-                candidato = valor[
-                    battle_id_str
-                ]
-
-                if isinstance(
-                    candidato,
-                    dict
-                ):
-                    return candidato
-
-            for subvalor in valor.values():
-
-                encontrado = recorrer(
-                    subvalor
-                )
-
-                if encontrado is not None:
-                    return encontrado
-
-        elif isinstance(valor, list):
-
-            for item in valor:
-
-                encontrado = recorrer(
-                    item
-                )
-
-                if encontrado is not None:
-                    return encontrado
-
-        return None
-
-    return recorrer(
-        data
+    return batallas.get(
+        int(battle_id)
     )
 
 
@@ -232,9 +234,8 @@ def buscar_batalla(data, battle_id):
 # ============================================================
 
 def nombre_pais(country_id):
-
     return PAISES.get(
-        country_id,
+        int(country_id),
         f"País {country_id}"
     )
 
@@ -244,7 +245,6 @@ def nombre_pais(country_id):
 # ============================================================
 
 def obtener_divisiones(batalla):
-
     resultado = {}
 
     divisiones = batalla.get(
@@ -269,6 +269,14 @@ def obtener_divisiones(batalla):
         division_id = division_data.get(
             "div"
         )
+
+        try:
+            division_id = int(
+                division_id
+            )
+
+        except (TypeError, ValueError):
+            continue
 
         if division_id not in DIVISIONES:
             continue
@@ -298,89 +306,91 @@ def obtener_divisiones(batalla):
         ):
             continue
 
-        resultado[
-            division_id
-        ] = {
-            "zone_id": int(
-                zone_id
-            ),
-            "country_id": int(
-                country_id
-            ),
-            "percentage": float(
-                porcentaje
-            ),
-        }
+        try:
+            resultado[
+                division_id
+            ] = {
+                "zone_id": int(
+                    zone_id
+                ),
+                "country_id": int(
+                    country_id
+                ),
+                "percentage": float(
+                    porcentaje
+                ),
+            }
+
+        except (TypeError, ValueError):
+            continue
 
     return resultado
 
 
 # ============================================================
-# /START
+# PORCENTAJE DE UN PAÍS
 # ============================================================
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+def porcentaje_pais(
+    datos_division,
+    country_id
 ):
+    pais_wall = datos_division[
+        "country_id"
+    ]
 
-    await update.message.reply_text(
-        "🇦🇷 eArgentina Battle Bot\n\n"
-        "Bot funcionando.\n"
-        "Usá /test para analizar "
-        "la batalla configurada."
-    )
+    porcentaje_wall = datos_division[
+        "percentage"
+    ]
 
+    if pais_wall == country_id:
+        return porcentaje_wall
 
-# ============================================================
-# /ESTADO
-# ============================================================
-
-async def estado(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    await update.message.reply_text(
-        "✅ Bot funcionando\n\n"
-        f"Battle ID de prueba: {BATTLE_ID}\n"
-        "Fuente: campaignsJson/list"
-    )
+    return 100 - porcentaje_wall
 
 
 # ============================================================
-# /TEST
+# FORMATO
 # ============================================================
 
-async def test(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-
-    try:
-
-        # ----------------------------------------------------
-        # CONSULTAR CAMPAÑAS
-        # ----------------------------------------------------
-
-        data = consultar_campanas()
-
-        batalla = buscar_batalla(
-            data,
-            BATTLE_ID
+def formatear_porcentaje(valor):
+    if abs(
+        valor - round(valor)
+    ) < 0.005:
+        return str(
+            int(round(valor))
         )
 
-        if batalla is None:
+    return f"{valor:.1f}"
 
-            raise ValueError(
-                f"No encontré la batalla "
-                f"{BATTLE_ID} entre las "
-                f"campañas activas."
+
+def formatear_score(valor):
+    try:
+        valor_float = float(valor)
+
+        if valor_float.is_integer():
+            return str(
+                int(valor_float)
             )
 
-        # ----------------------------------------------------
-        # ATACANTE / DEFENSOR
-        # ----------------------------------------------------
+        return f"{valor_float:.1f}"
+
+    except (TypeError, ValueError):
+        return "?"
+
+
+# ============================================================
+# BUSCAR BATALLAS DE ARGENTINA
+# ============================================================
+
+def buscar_batallas_argentina(data):
+    todas = obtener_batallas(
+        data
+    )
+
+    resultado = []
+
+    for battle_id, batalla in todas.items():
 
         inv = batalla.get(
             "inv",
@@ -400,22 +410,403 @@ async def test(
             "id"
         )
 
-        if (
-            invader_id is None
-            or defender_id is None
-        ):
-
-            raise ValueError(
-                "No encontré atacante "
-                "y defensor."
+        try:
+            invader_id = int(
+                invader_id
             )
 
+            defender_id = int(
+                defender_id
+            )
+
+        except (TypeError, ValueError):
+            continue
+
+        if (
+            invader_id != ARGENTINA_ID
+            and defender_id != ARGENTINA_ID
+        ):
+            continue
+
+        if invader_id == ARGENTINA_ID:
+
+            rival_id = defender_id
+            rol = "atacante"
+
+        else:
+
+            rival_id = invader_id
+            rol = "defensor"
+
+        resultado.append({
+            "battle_id":
+                battle_id,
+
+            "batalla":
+                batalla,
+
+            "rival_id":
+                rival_id,
+
+            "rol":
+                rol,
+
+            "invader_id":
+                invader_id,
+
+            "defender_id":
+                defender_id,
+        })
+
+    resultado.sort(
+        key=lambda x: x[
+            "battle_id"
+        ],
+        reverse=True
+    )
+
+    return resultado
+
+
+# ============================================================
+# OBTENER SCORE ARGENTINA / RIVAL
+# ============================================================
+
+def obtener_score_argentina(item):
+    batalla = item[
+        "batalla"
+    ]
+
+    invader_id = item[
+        "invader_id"
+    ]
+
+    defender_id = item[
+        "defender_id"
+    ]
+
+    inv = batalla.get(
+        "inv",
+        {}
+    )
+
+    defender = batalla.get(
+        "def",
+        {}
+    )
+
+    puntos_invader = inv.get(
+        "points",
+        0
+    )
+
+    puntos_defender = defender.get(
+        "points",
+        0
+    )
+
+    if invader_id == ARGENTINA_ID:
+
+        puntos_argentina = (
+            puntos_invader
+        )
+
+        puntos_rival = (
+            puntos_defender
+        )
+
+    else:
+
+        puntos_argentina = (
+            puntos_defender
+        )
+
+        puntos_rival = (
+            puntos_invader
+        )
+
+    return (
+        puntos_argentina,
+        puntos_rival
+    )
+
+
+# ============================================================
+# FORMATEAR BATALLA ARGENTINA
+# ============================================================
+
+def formatear_batalla_argentina(
+    item
+):
+    battle_id = item[
+        "battle_id"
+    ]
+
+    batalla = item[
+        "batalla"
+    ]
+
+    rival_id = item[
+        "rival_id"
+    ]
+
+    rol = item[
+        "rol"
+    ]
+
+    rival = html.escape(
+        nombre_pais(
+            rival_id
+        )
+    )
+
+    if rol == "atacante":
+        icono = "⚔️"
+    else:
+        icono = "🛡️"
+
+    # --------------------------------------------------------
+    # LINK EMBEBIDO
+    # --------------------------------------------------------
+
+    url = (
+        "https://www.erepublik.com/"
+        "en/military/battlefield/"
+        f"{battle_id}"
+    )
+
+    rival_link = (
+        f'<a href="{url}">'
+        f'{rival}'
+        f'</a>'
+    )
+
+    # --------------------------------------------------------
+    # SCORE TOTAL
+    # --------------------------------------------------------
+
+    puntos_argentina, puntos_rival = (
+        obtener_score_argentina(
+            item
+        )
+    )
+
+    score_arg = formatear_score(
+        puntos_argentina
+    )
+
+    score_rival = formatear_score(
+        puntos_rival
+    )
+
+    # --------------------------------------------------------
+    # DIVISIONES
+    # --------------------------------------------------------
+
+    divisiones = obtener_divisiones(
+        batalla
+    )
+
+    partes = []
+
+    for division_id in [
+        3,
+        4,
+        11
+    ]:
+
+        nombre = DIVISIONES[
+            division_id
+        ]
+
+        datos = divisiones.get(
+            division_id
+        )
+
+        if datos is None:
+
+            partes.append(
+                f"{nombre} --"
+            )
+
+            continue
+
+        porcentaje_arg = porcentaje_pais(
+            datos,
+            ARGENTINA_ID
+        )
+
+        porcentaje_rival = (
+            100 - porcentaje_arg
+        )
+
+        arg_txt = formatear_porcentaje(
+            porcentaje_arg
+        )
+
+        rival_txt = formatear_porcentaje(
+            porcentaje_rival
+        )
+
+        if division_id == 11:
+
+            partes.append(
+                f"A {arg_txt}%-{rival_txt}%"
+            )
+
+        else:
+
+            partes.append(
+                f"{nombre} "
+                f"{arg_txt}%-{rival_txt}%"
+            )
+
+    linea_divisiones = (
+        " | ".join(
+            partes
+        )
+    )
+
+    return (
+        f"{icono} {rival_link} "
+        f"| T {score_arg}-{score_rival}\n"
+        f"{linea_divisiones}"
+    )
+
+
+# ============================================================
+# /START
+# ============================================================
+
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    await update.message.reply_text(
+        "🇦🇷 eArgentina Battle Bot\n\n"
+        "/argentina - Batallas activas "
+        "de Argentina\n"
+        "/test - Batalla de control\n"
+        "/estado - Estado del bot"
+    )
+
+
+# ============================================================
+# /ESTADO
+# ============================================================
+
+async def estado(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    await update.message.reply_text(
+        "✅ Bot funcionando\n\n"
+        "Fuente: campaignsJson/list\n"
+        f"Argentina ID: {ARGENTINA_ID}\n"
+        f"Battle test: {BATTLE_ID_TEST}"
+    )
+
+
+# ============================================================
+# /ARGENTINA
+# ============================================================
+
+async def argentina(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    try:
+
+        data = consultar_campanas()
+
+        batallas = (
+            buscar_batallas_argentina(
+                data
+            )
+        )
+
+        if not batallas:
+
+            await update.message.reply_text(
+                "🇦🇷 Argentina no tiene "
+                "batallas activas en este momento."
+            )
+
+            return
+
+        bloques = []
+
+        for item in batallas:
+
+            bloques.append(
+                formatear_batalla_argentina(
+                    item
+                )
+            )
+
+        mensaje = (
+            "🇦🇷 <b>BATALLAS DE ARGENTINA</b>\n"
+            f"Activas: {len(batallas)}\n\n"
+            + "\n\n".join(
+                bloques
+            )
+        )
+
+        await update.message.reply_text(
+            mensaje,
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+
+    except Exception as e:
+
+        await update.message.reply_text(
+            "❌ Error en /argentina\n\n"
+            f"{type(e).__name__}: {e}"
+        )
+
+
+# ============================================================
+# /TEST
+# ============================================================
+
+async def test(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    try:
+
+        data = consultar_campanas()
+
+        batalla = buscar_batalla(
+            data,
+            BATTLE_ID_TEST
+        )
+
+        if batalla is None:
+
+            raise ValueError(
+                f"No encontré la batalla "
+                f"{BATTLE_ID_TEST} entre "
+                f"las campañas activas."
+            )
+
+        inv = batalla.get(
+            "inv",
+            {}
+        )
+
+        defender = batalla.get(
+            "def",
+            {}
+        )
+
         invader_id = int(
-            invader_id
+            inv["id"]
         )
 
         defender_id = int(
-            defender_id
+            defender["id"]
         )
 
         atacante = nombre_pais(
@@ -426,23 +817,27 @@ async def test(
             defender_id
         )
 
-        # ----------------------------------------------------
-        # DIVISIONES
-        # ----------------------------------------------------
+        puntos_atacante = inv.get(
+            "points",
+            0
+        )
+
+        puntos_defensor = defender.get(
+            "points",
+            0
+        )
 
         divisiones = obtener_divisiones(
             batalla
         )
 
-        # ----------------------------------------------------
-        # MENSAJE
-        # ----------------------------------------------------
-
         mensaje = (
-            "⚔️ BATALLA\n\n"
-            f"Battle ID: {BATTLE_ID}\n\n"
-            f"🛡️ Defensor: {defensor}\n"
-            f"⚔️ Atacante: {atacante}\n\n"
+            "🧪 BATALLA DE CONTROL\n\n"
+            f"Battle ID: {BATTLE_ID_TEST}\n"
+            f"🛡️ {defensor}: "
+            f"{formatear_score(puntos_defensor)}\n"
+            f"⚔️ {atacante}: "
+            f"{formatear_score(puntos_atacante)}\n\n"
         )
 
         for division_id in [
@@ -451,11 +846,9 @@ async def test(
             11
         ]:
 
-            nombre_division = (
-                DIVISIONES[
-                    division_id
-                ]
-            )
+            nombre = DIVISIONES[
+                division_id
+            ]
 
             datos = divisiones.get(
                 division_id
@@ -464,77 +857,30 @@ async def test(
             if datos is None:
 
                 mensaje += (
-                    f"{nombre_division}\n"
-                    "⚠️ Sin datos\n\n"
+                    f"{nombre}: sin datos\n"
                 )
 
                 continue
 
-            pais_for_id = datos[
-                "country_id"
-            ]
-
-            porcentaje_for = datos[
-                "percentage"
-            ]
-
-            porcentaje_otro = (
-                100 - porcentaje_for
+            porcentaje_defensor = (
+                porcentaje_pais(
+                    datos,
+                    defender_id
+                )
             )
 
-            # ----------------------------------------------
-            # ASIGNAR PORCENTAJE A CADA PAÍS
-            # ----------------------------------------------
-
-            if (
-                pais_for_id
-                == defender_id
-            ):
-
-                porcentaje_defensor = (
-                    porcentaje_for
-                )
-
-                porcentaje_atacante = (
-                    porcentaje_otro
-                )
-
-            elif (
-                pais_for_id
-                == invader_id
-            ):
-
-                porcentaje_atacante = (
-                    porcentaje_for
-                )
-
-                porcentaje_defensor = (
-                    porcentaje_otro
-                )
-
-            else:
-
-                raise ValueError(
-                    f"{nombre_division}: "
-                    f"wall.for={pais_for_id} "
-                    f"no coincide con los "
-                    f"países de la batalla."
-                )
+            porcentaje_atacante = (
+                100
+                - porcentaje_defensor
+            )
 
             mensaje += (
-                f"{nombre_division}\n"
-                f"🛡️ {defensor}: "
-                f"{porcentaje_defensor:.2f}%\n"
-                f"⚔️ {atacante}: "
-                f"{porcentaje_atacante:.2f}%\n\n"
+                f"{nombre}: "
+                f"{defensor} "
+                f"{porcentaje_defensor:.2f}% | "
+                f"{atacante} "
+                f"{porcentaje_atacante:.2f}%\n"
             )
-
-        mensaje += (
-            "🔗 "
-            f"https://www.erepublik.com/"
-            f"en/military/battlefield/"
-            f"{BATTLE_ID}"
-        )
 
         await update.message.reply_text(
             mensaje
@@ -543,7 +889,7 @@ async def test(
     except Exception as e:
 
         await update.message.reply_text(
-            "❌ Error\n\n"
+            "❌ Error en /test\n\n"
             f"{type(e).__name__}: {e}"
         )
 
@@ -591,6 +937,13 @@ def main():
         CommandHandler(
             "test",
             test
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "argentina",
+            argentina
         )
     )
 
