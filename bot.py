@@ -52,14 +52,6 @@ def crear_headers(battle_id):
 # ============================================================
 
 def obtener_info_batalla(battle_id):
-    """
-    Lee SERVER_DATA desde la página battlefield.
-
-    De ahí obtenemos:
-    - countryId
-    - invaderId
-    - countries
-    """
 
     url = (
         f"https://www.erepublik.com/en/military/"
@@ -80,32 +72,69 @@ def obtener_info_batalla(battle_id):
 
     html = response.text
 
-    # SERVER_DATA aparece como objeto JSON dentro del HTML.
-    match = re.search(
-        r"SERVER_DATA\s*=\s*(\{.*?\});",
-        html,
-        re.DOTALL,
+    # ------------------------------------------
+    # INVADER ID
+    # ------------------------------------------
+
+    match_invader = re.search(
+        r'"invaderId"\s*:\s*(\d+)',
+        html
     )
 
-    if not match:
+    if not match_invader:
         raise ValueError(
-            "No encontré SERVER_DATA en battlefield"
+            "No encontré invaderId en battlefield"
+        )
+
+    invader_id = int(
+        match_invader.group(1)
+    )
+
+    # ------------------------------------------
+    # COUNTRY ID
+    # ------------------------------------------
+
+    match_country = re.search(
+        r'"countryId"\s*:\s*(\d+)',
+        html
+    )
+
+    country_id = None
+
+    if match_country:
+        country_id = int(
+            match_country.group(1)
+        )
+
+    # ------------------------------------------
+    # LISTA DE PAÍSES
+    #
+    # Buscamos el bloque:
+    # "countries":{"1":"Romania", ...}
+    # ------------------------------------------
+
+    match_countries = re.search(
+        r'"countries"\s*:\s*(\{[^}]+\})',
+        html
+    )
+
+    if not match_countries:
+        raise ValueError(
+            "No encontré countries en battlefield"
         )
 
     try:
-        server_data = json.loads(match.group(1))
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"No pude interpretar SERVER_DATA: {e}"
+        countries = json.loads(
+            match_countries.group(1)
         )
 
-    battle_id_html = server_data.get("battleId")
-    country_id = server_data.get("countryId")
-    invader_id = server_data.get("invaderId")
-    countries = server_data.get("countries", {})
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"No pude leer countries: {e}"
+        )
 
     return {
-        "battle_id": battle_id_html,
+        "battle_id": battle_id,
         "country_id": country_id,
         "invader_id": invader_id,
         "countries": countries,
