@@ -22,7 +22,7 @@ DIVISIONES = {
 
 
 # ============================================================
-# HEADERS
+# HEADERS PARA BATTLE-STATS
 # ============================================================
 
 def crear_headers(battle_id):
@@ -48,6 +48,33 @@ def crear_headers(battle_id):
 
 
 # ============================================================
+# HEADERS PARA LEER EL HTML NORMAL
+# ============================================================
+
+def crear_headers_html(battle_id):
+    cookie = os.getenv("EREPUBLIK_COOKIE")
+
+    if not cookie:
+        raise ValueError("No se encontró EREPUBLIK_COOKIE")
+
+    return {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/151.0.0.0 Safari/537.36"
+        ),
+        "Accept": (
+            "text/html,application/xhtml+xml,"
+            "application/xml;q=0.9,image/avif,"
+            "image/webp,*/*;q=0.8"
+        ),
+        "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
+        "Referer": "https://www.erepublik.com/",
+        "Cookie": cookie.strip(),
+    }
+
+
+# ============================================================
 # INFORMACIÓN GENERAL DE LA BATALLA
 # ============================================================
 
@@ -60,7 +87,7 @@ def obtener_info_batalla(battle_id):
 
     response = requests.get(
         url,
-        headers=crear_headers(battle_id),
+        headers=crear_headers_html(battle_id),
         timeout=15,
     )
 
@@ -108,9 +135,6 @@ def obtener_info_batalla(battle_id):
 
     # ------------------------------------------
     # LISTA DE PAÍSES
-    #
-    # Buscamos el bloque:
-    # "countries":{"1":"Romania", ...}
     # ------------------------------------------
 
     match_countries = re.search(
@@ -160,6 +184,7 @@ def consultar_zona(battle_id, division, zone_id):
 
     try:
         data = response.json()
+
     except ValueError:
         raise ValueError(
             f"eRepublik no devolvió JSON. "
@@ -183,6 +208,7 @@ def obtener_respuesta_inicial(battle_id, zone_id):
     for division_id in [3, 4, 11]:
 
         try:
+
             data = consultar_zona(
                 battle_id,
                 division_id,
@@ -193,6 +219,7 @@ def obtener_respuesta_inicial(battle_id, zone_id):
                 return data
 
         except Exception as e:
+
             errores.append(
                 f"{DIVISIONES[division_id]}: {e}"
             )
@@ -204,7 +231,7 @@ def obtener_respuesta_inicial(battle_id, zone_id):
 
 
 # ============================================================
-# ENCONTRAR ZONAS
+# ENCONTRAR ZONAS D3 / D4 / AIR
 # ============================================================
 
 def buscar_zonas(objeto, zonas=None):
@@ -218,6 +245,7 @@ def buscar_zonas(objeto, zonas=None):
             "battle_zone_id" in objeto
             and "division" in objeto
         ):
+
             division = objeto.get("division")
             zone_id = objeto.get("battle_zone_id")
 
@@ -290,6 +318,7 @@ def obtener_datos_division(
 
         try:
             country_id = int(clave)
+
         except (ValueError, TypeError):
             continue
 
@@ -350,7 +379,7 @@ async def test(
     try:
 
         # ----------------------------------------
-        # Información general
+        # INFORMACIÓN GENERAL
         # ----------------------------------------
 
         info = obtener_info_batalla(
@@ -364,7 +393,7 @@ async def test(
         )
 
         # ----------------------------------------
-        # Battle-stats
+        # BATTLE-STATS
         # ----------------------------------------
 
         data_inicial = obtener_respuesta_inicial(
@@ -400,7 +429,7 @@ async def test(
                 datos["pais_barra"]
             )
 
-            if datos["pais_contrario"]:
+            if datos["pais_contrario"] is not None:
                 paises.add(
                     datos["pais_contrario"]
                 )
@@ -411,7 +440,7 @@ async def test(
             )
 
         # ----------------------------------------
-        # Atacante / defensor
+        # ATACANTE / DEFENSOR
         # ----------------------------------------
 
         if invader_id not in paises:
@@ -436,13 +465,13 @@ async def test(
         )
 
         # ----------------------------------------
-        # Mensaje
+        # MENSAJE
         # ----------------------------------------
 
         mensaje = (
             "⚔️ BATALLA\n\n"
-            f"🛡️ {defensor}\n"
-            f"⚔️ {atacante}\n\n"
+            f"🛡️ Defensor: {defensor}\n"
+            f"⚔️ Atacante: {atacante}\n\n"
         )
 
         for division_id in [3, 4, 11]:
@@ -456,10 +485,12 @@ async def test(
             )
 
             if not datos:
+
                 mensaje += (
                     f"⚠️ {nombre}: "
                     "sin datos\n\n"
                 )
+
                 continue
 
             porcentajes = {
@@ -536,6 +567,7 @@ def main():
     )
 
     if not telegram_token:
+
         raise ValueError(
             "No se encontró TELEGRAM_TOKEN"
         )
