@@ -1,6 +1,4 @@
 import os
-import re
-import json
 import requests
 
 from telegram import Update
@@ -8,14 +6,10 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 
 # ============================================================
-# BATALLA DE PRUEBA
+# CONFIGURACIÓN
 # ============================================================
 
 BATTLE_ID = 931105
-
-# Cualquier Battle Zone válida de esta batalla.
-# En este caso usamos una que sabemos que pertenece a la batalla.
-PAGE_ZONE_ID = 41421720
 
 DIVISIONES = {
     3: "D3",
@@ -23,12 +17,7 @@ DIVISIONES = {
     11: "AIR",
 }
 
-
-# ============================================================
-# TABLA DE PAÍSES - RESPALDO
-# ============================================================
-
-PAISES_FALLBACK = {
+PAISES = {
     167: "Albania",
     27: "Argentina",
     169: "Armenia",
@@ -47,7 +36,7 @@ PAISES_FALLBACK = {
     63: "Croatia",
     171: "Cuba",
     82: "Cyprus",
-    34: "Czech-Republic",
+    34: "Czech Republic",
     55: "Denmark",
     165: "Egypt",
     70: "Estonia",
@@ -70,10 +59,10 @@ PAISES_FALLBACK = {
     26: "Mexico",
     80: "Montenegro",
     31: "Netherlands",
-    84: "New-Zealand",
+    84: "New Zealand",
     170: "Nigeria",
-    73: "North-Korea",
-    79: "North-Macedonia",
+    73: "North Korea",
+    79: "North Macedonia",
     37: "Norway",
     57: "Pakistan",
     75: "Paraguay",
@@ -81,25 +70,25 @@ PAISES_FALLBACK = {
     67: "Philippines",
     35: "Poland",
     53: "Portugal",
-    81: "Republic-of-China-Taiwan",
-    52: "Republic-of-Moldova",
+    81: "Republic of China Taiwan",
+    52: "Republic of Moldova",
     1: "Romania",
     41: "Russia",
-    164: "Saudi-Arabia",
+    164: "Saudi Arabia",
     65: "Serbia",
     68: "Singapore",
     36: "Slovakia",
     61: "Slovenia",
-    51: "South-Africa",
-    47: "South-Korea",
+    51: "South Africa",
+    47: "South Korea",
     15: "Spain",
     38: "Sweden",
     30: "Switzerland",
     59: "Thailand",
     43: "Turkey",
     40: "Ukraine",
-    166: "United-Arab-Emirates",
-    29: "United-Kingdom",
+    166: "United Arab Emirates",
+    29: "United Kingdom",
     74: "Uruguay",
     24: "USA",
     28: "Venezuela",
@@ -110,308 +99,210 @@ PAISES_FALLBACK = {
 # HEADERS
 # ============================================================
 
-def obtener_cookie():
+def get_headers():
     cookie = os.getenv("EREPUBLIK_COOKIE")
 
     if not cookie:
         raise ValueError("No se encontró EREPUBLIK_COOKIE")
 
-    return cookie.strip()
-
-
-def headers_html():
     return {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/151.0.0.0 Safari/537.36"
         ),
-        "Accept": (
-            "text/html,application/xhtml+xml,"
-            "application/xml;q=0.9,image/avif,"
-            "image/webp,*/*;q=0.8"
-        ),
-        "Accept-Language": "es-AR,es;q=0.9,en;q=0.8",
-        "Cookie": obtener_cookie(),
-    }
-
-
-def headers_ajax(battle_id):
-    return {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/151.0.0.0 Safari/537.36"
-        ),
+        "Accept": "application/json, text/javascript, */*; q=0.01",
         "X-Requested-With": "XMLHttpRequest",
         "Referer": (
             f"https://www.erepublik.com/en/military/"
-            f"battlefield/{battle_id}"
+            f"battlefield/{BATTLE_ID}"
         ),
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Cookie": obtener_cookie(),
+        "Cookie": cookie.strip(),
     }
 
 
 # ============================================================
-# LEER INFORMACIÓN GENERAL DEL HTML
+# CONSULTAR BATTLE-STATS
 # ============================================================
 
-def obtener_info_batalla(battle_id, page_zone_id):
+def consultar_stats():
+    """
+    Usamos la URL general de battle-stats que ya comprobamos
+    anteriormente que devuelve la estructura completa.
+    """
+
     url = (
         f"https://www.erepublik.com/en/military/"
-        f"battlefield/{battle_id}/{page_zone_id}"
+        f"battle-stats/{BATTLE_ID}"
     )
 
     response = requests.get(
         url,
-        headers=headers_html(),
-        timeout=15,
-    )
-
-    if response.status_code != 200:
-        raise ValueError(
-            f"No pude abrir battlefield. HTTP {response.status_code}"
-        )
-
-    html = response.text
-
-    # --------------------------------------------------------
-    # Atacante
-    # --------------------------------------------------------
-
-    match_invader = re.search(
-        r'"invaderId"\s*:\s*(\d+)',
-        html
-    )
-
-    if not match_invader:
-        raise ValueError(
-            "No encontré invaderId en battlefield"
-        )
-
-    invader_id = int(match_invader.group(1))
-
-    # --------------------------------------------------------
-    # Defensor
-    # --------------------------------------------------------
-
-    match_defender = re.search(
-        r'"defenderId"\s*:\s*(\d+)',
-        html
-    )
-
-    if not match_defender:
-        raise ValueError(
-            "No encontré defenderId en battlefield"
-        )
-
-    defender_id = int(match_defender.group(1))
-
-    # --------------------------------------------------------
-    # Nombres de países
-    # --------------------------------------------------------
-
-    countries = {}
-
-    match_countries = re.search(
-        r'"countries"\s*:\s*(\{[^}]+\})',
-        html
-    )
-
-    if match_countries:
-        try:
-            countries = json.loads(
-                match_countries.group(1)
-            )
-        except json.JSONDecodeError:
-            countries = {}
-
-    # --------------------------------------------------------
-    # Battle Zones activas
-    # --------------------------------------------------------
-
-    zonas = {}
-
-    for division_id in [3, 4, 11]:
-
-        patron = (
-            rf'"battleZoneId"\s*:\s*(\d+),'
-            rf'"zoneId"\s*:\s*\d+,'
-            rf'"division"\s*:\s*{division_id}'
-        )
-
-        matches = re.findall(
-            patron,
-            html
-        )
-
-        if matches:
-            # Tomamos la última coincidencia porque suele ser
-            # la ronda activa más reciente.
-            zonas[division_id] = int(
-                matches[-1]
-            )
-
-    if len(zonas) < 3:
-        raise ValueError(
-            f"No encontré todas las zonas activas: {zonas}"
-        )
-
-    # --------------------------------------------------------
-    # Tiempo
-    # --------------------------------------------------------
-
-    zone_elapsed = None
-
-    match_elapsed = re.search(
-        r'"zoneElapsedTime"\s*:\s*"([^"]+)"',
-        html
-    )
-
-    if match_elapsed:
-        zone_elapsed = match_elapsed.group(1)
-
-    # --------------------------------------------------------
-    # RW
-    # --------------------------------------------------------
-
-    is_resistance = False
-
-    match_rw = re.search(
-        r'"isResistance"\s*:\s*(true|false)',
-        html
-    )
-
-    if match_rw:
-        is_resistance = (
-            match_rw.group(1) == "true"
-        )
-
-    return {
-        "invader_id": invader_id,
-        "defender_id": defender_id,
-        "countries": countries,
-        "zonas": zonas,
-        "zone_elapsed": zone_elapsed,
-        "is_resistance": is_resistance,
-    }
-
-
-# ============================================================
-# BATTLE-STATS
-# ============================================================
-
-def consultar_zona(
-    battle_id,
-    division_id,
-    battle_zone_id
-):
-    url = (
-        f"https://www.erepublik.com/en/military/"
-        f"battle-stats/{battle_id}/"
-        f"{division_id}/{battle_zone_id}"
-    )
-
-    response = requests.get(
-        url,
-        headers=headers_ajax(battle_id),
-        timeout=15,
+        headers=get_headers(),
+        timeout=20
     )
 
     try:
         data = response.json()
-
-    except ValueError:
+    except Exception:
         raise ValueError(
-            f"battle-stats no devolvió JSON. "
+            f"eRepublik no devolvió JSON. "
             f"HTTP {response.status_code}"
         )
 
-    if "error" in data:
+    if isinstance(data, dict) and "error" in data:
         raise ValueError(
-            f"eRepublik: {data['error']}"
+            f"eRepublik respondió: {data['error']}"
         )
 
     return data
 
 
 # ============================================================
-# LEER BARRA DE UNA DIVISIÓN
+# BUSCAR TODAS LAS BARRAS
 # ============================================================
 
-def obtener_barra(
-    battle_id,
-    division_id,
-    battle_zone_id
-):
-    data = consultar_zona(
-        battle_id,
-        division_id,
-        battle_zone_id,
-    )
+def buscar_barras(obj):
+    """
+    Recorre todo el JSON buscando objetos top_damage.
 
-    division_data = data.get(
-        "division",
-        {}
-    )
+    Esto es similar al método que ya nos permitió encontrar
+    correctamente los IDs 80 y 168.
+    """
 
-    domination = division_data.get(
-        "domination",
-        {}
-    )
+    encontrados = []
 
-    bar = division_data.get(
-        "bar",
-        {}
-    )
+    def recorrer(valor):
+        if isinstance(valor, dict):
 
-    porcentaje = domination.get(
-        str(battle_zone_id)
-    )
+            top_damage = valor.get("top_damage")
 
-    country_id = bar.get(
-        str(battle_zone_id)
-    )
+            if isinstance(top_damage, list):
+                for item in top_damage:
+                    if not isinstance(item, dict):
+                        continue
 
-    if porcentaje is None:
-        raise ValueError(
-            f"No encontré domination "
-            f"para {battle_zone_id}"
-        )
+                    division = item.get("division")
+                    zone_id = item.get("battle_zone_id")
+                    country_id = item.get("side_country_id")
 
-    if country_id is None:
-        raise ValueError(
-            f"No encontré country ID "
-            f"para {battle_zone_id}"
-        )
+                    if (
+                        division in DIVISIONES
+                        and zone_id
+                        and country_id
+                    ):
+                        encontrados.append({
+                            "division": int(division),
+                            "zone_id": int(zone_id),
+                            "country_id": int(country_id),
+                        })
 
-    return {
-        "country_id": int(country_id),
-        "percentage": float(porcentaje),
-    }
+            for subvalor in valor.values():
+                recorrer(subvalor)
+
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+
+    recorrer(obj)
+
+    return encontrados
 
 
 # ============================================================
-# NOMBRE DE PAÍS
+# ELEGIR ZONA MÁS NUEVA
 # ============================================================
 
-def nombre_pais(country_id, countries):
-    nombre = countries.get(
-        str(country_id)
-    )
+def zonas_actuales(encontrados):
+    """
+    Para cada división elegimos el battle_zone_id más alto.
 
-    if nombre:
-        return nombre.replace("-", " ")
+    Los Battle Zone IDs aumentan a medida que aparecen
+    nuevas rondas, por lo que esto nos permite dejar de
+    hardcodear PAGE_ZONE_ID.
+    """
 
-    nombre = PAISES_FALLBACK.get(
-        country_id
-    )
+    resultado = {}
 
-    if nombre:
-        return nombre.replace("-", " ")
+    for item in encontrados:
 
-    return f"País {country_id}"
+        division = item["division"]
+
+        if division not in DIVISIONES:
+            continue
+
+        actual = resultado.get(division)
+
+        if (
+            actual is None
+            or item["zone_id"] > actual["zone_id"]
+        ):
+            resultado[division] = item
+
+    return resultado
+
+
+# ============================================================
+# BUSCAR DOMINATION
+# ============================================================
+
+def buscar_domination(obj, battle_zone_id):
+    """
+    Busca el porcentaje correspondiente a una Battle Zone.
+    """
+
+    objetivo = str(battle_zone_id)
+
+    resultados = []
+
+    def recorrer(valor, path="root"):
+
+        if isinstance(valor, dict):
+
+            domination = valor.get("domination")
+
+            if isinstance(domination, dict):
+                if objetivo in domination:
+
+                    dato = domination[objetivo]
+
+                    if isinstance(dato, (int, float)):
+                        resultados.append(float(dato))
+
+            for clave, subvalor in valor.items():
+                recorrer(
+                    subvalor,
+                    f"{path}.{clave}"
+                )
+
+        elif isinstance(valor, list):
+
+            for i, item in enumerate(valor):
+                recorrer(
+                    item,
+                    f"{path}[{i}]"
+                )
+
+    recorrer(obj)
+
+    if not resultados:
+        return None
+
+    return resultados[0]
+
+
+# ============================================================
+# DETECTAR PAÍSES
+# ============================================================
+
+def detectar_paises(encontrados):
+
+    ids = set()
+
+    for item in encontrados:
+        ids.add(item["country_id"])
+
+    return sorted(ids)
 
 
 # ============================================================
@@ -424,9 +315,8 @@ async def start(
 ):
     await update.message.reply_text(
         "🇦🇷 eArgentina Battle Bot\n\n"
-        "/estado - Estado del bot\n"
-        "/test - Analizar batalla\n"
-        "/ayuda - Ver comandos"
+        "Bot funcionando correctamente.\n"
+        "Usá /test para analizar la batalla."
     )
 
 
@@ -439,9 +329,8 @@ async def estado(
     context: ContextTypes.DEFAULT_TYPE
 ):
     await update.message.reply_text(
-        "🇦🇷 eArgentina Battle Bot\n\n"
-        "✅ Bot funcionando\n"
-        "✅ battlefield + battle-stats"
+        "✅ Bot funcionando\n\n"
+        f"Battle ID configurada: {BATTLE_ID}"
     )
 
 
@@ -453,162 +342,113 @@ async def test(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     try:
 
-        # ----------------------------------------------------
-        # Información general
-        # ----------------------------------------------------
+        data = consultar_stats()
 
-        info = obtener_info_batalla(
-            BATTLE_ID,
-            PAGE_ZONE_ID,
-        )
+        encontrados = buscar_barras(data)
 
-        invader_id = info[
-            "invader_id"
-        ]
-
-        defender_id = info[
-            "defender_id"
-        ]
-
-        countries = info[
-            "countries"
-        ]
-
-        zonas = info[
-            "zonas"
-        ]
-
-        atacante = nombre_pais(
-            invader_id,
-            countries
-        )
-
-        defensor = nombre_pais(
-            defender_id,
-            countries
-        )
-
-        # ----------------------------------------------------
-        # Barras
-        # ----------------------------------------------------
-
-        resultados = {}
-
-        for division_id in [3, 4, 11]:
-
-            zone_id = zonas[
-                division_id
-            ]
-
-            barra = obtener_barra(
-                BATTLE_ID,
-                division_id,
-                zone_id,
+        if not encontrados:
+            raise ValueError(
+                "No encontré datos de D3/D4/AIR."
             )
 
-            country_barra = barra[
-                "country_id"
-            ]
+        paises_ids = detectar_paises(
+            encontrados
+        )
 
-            porcentaje_barra = barra[
-                "percentage"
-            ]
-
-            otro_porcentaje = (
-                100 - porcentaje_barra
-            )
-
-            if (
-                country_barra
-                == defender_id
-            ):
-
-                porcentaje_defensor = (
-                    porcentaje_barra
-                )
-
-                porcentaje_atacante = (
-                    otro_porcentaje
-                )
-
-            elif (
-                country_barra
-                == invader_id
-            ):
-
-                porcentaje_atacante = (
-                    porcentaje_barra
-                )
-
-                porcentaje_defensor = (
-                    otro_porcentaje
-                )
-
-            else:
-                raise ValueError(
-                    "El país asociado a la barra "
-                    "no coincide con atacante "
-                    "ni defensor."
-                )
-
-            resultados[
-                division_id
-            ] = {
-                "defensor":
-                    porcentaje_defensor,
-                "atacante":
-                    porcentaje_atacante,
-                "zone_id":
-                    zone_id,
-            }
-
-        # ----------------------------------------------------
-        # MENSAJE
-        # ----------------------------------------------------
-
-        tipo = (
-            "RW"
-            if info["is_resistance"]
-            else "Batalla normal"
+        zonas = zonas_actuales(
+            encontrados
         )
 
         mensaje = (
-            "⚔️ BATALLA\n\n"
-            f"🛡️ Defensor: {defensor}\n"
-            f"⚔️ Atacante: {atacante}\n"
-            f"Tipo: {tipo}\n"
+            "🔎 Batalla detectada\n\n"
+            f"Battle ID: {BATTLE_ID}\n\n"
         )
 
-        if info["zone_elapsed"]:
+        # ----------------------------------------------------
+        # Países
+        # ----------------------------------------------------
+
+        mensaje += "🌎 Países detectados:\n"
+
+        for country_id in paises_ids:
+
+            nombre = PAISES.get(
+                country_id,
+                f"País {country_id}"
+            )
+
             mensaje += (
-                f"⏱️ Tiempo de ronda: "
-                f"{info['zone_elapsed']}\n"
+                f"• {nombre} ({country_id})\n"
             )
 
         mensaje += "\n"
 
-        for division_id in [3, 4, 11]:
+        # ----------------------------------------------------
+        # Divisiones
+        # ----------------------------------------------------
 
-            nombre = DIVISIONES[
-                division_id
+        for division in [3, 4, 11]:
+
+            nombre_division = DIVISIONES[
+                division
             ]
 
-            resultado = resultados[
-                division_id
+            if division not in zonas:
+
+                mensaje += (
+                    f"{nombre_division}\n"
+                    "Sin datos\n\n"
+                )
+
+                continue
+
+            zona = zonas[
+                division
             ]
 
-            mensaje += (
-                f"{nombre}\n"
-                f"🛡️ {defensor}: "
-                f"{resultado['defensor']:.2f}%\n"
-                f"⚔️ {atacante}: "
-                f"{resultado['atacante']:.2f}%\n\n"
+            zone_id = zona[
+                "zone_id"
+            ]
+
+            country_id = zona[
+                "country_id"
+            ]
+
+            porcentaje = buscar_domination(
+                data,
+                zone_id
             )
 
+            pais = PAISES.get(
+                country_id,
+                f"País {country_id}"
+            )
+
+            mensaje += (
+                f"{nombre_division}\n"
+                f"Zone: {zone_id}\n"
+                f"País asociado: {pais}\n"
+            )
+
+            if porcentaje is not None:
+
+                mensaje += (
+                    f"Barra: {porcentaje:.2f}% / "
+                    f"{100 - porcentaje:.2f}%\n"
+                )
+
+            else:
+
+                mensaje += (
+                    "Barra: no encontrada\n"
+                )
+
+            mensaje += "\n"
+
         mensaje += (
-            f"Battle ID: {BATTLE_ID}\n\n"
             "🔗 "
             f"https://www.erepublik.com/en/military/"
             f"battlefield/{BATTLE_ID}"
@@ -627,32 +467,16 @@ async def test(
 
 
 # ============================================================
-# /AYUDA
-# ============================================================
-
-async def ayuda(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    await update.message.reply_text(
-        "🇦🇷 eArgentina Battle Bot\n\n"
-        "/start - Iniciar bot\n"
-        "/estado - Estado del bot\n"
-        "/test - Analizar batalla\n"
-        "/ayuda - Ver ayuda"
-    )
-
-
-# ============================================================
 # MAIN
 # ============================================================
 
 def main():
-    telegram_token = os.getenv(
+
+    token = os.getenv(
         "TELEGRAM_TOKEN"
     )
 
-    if not telegram_token:
+    if not token:
         raise ValueError(
             "No se encontró TELEGRAM_TOKEN"
         )
@@ -660,9 +484,7 @@ def main():
     app = (
         Application
         .builder()
-        .token(
-            telegram_token.strip()
-        )
+        .token(token.strip())
         .build()
     )
 
@@ -687,15 +509,8 @@ def main():
         )
     )
 
-    app.add_handler(
-        CommandHandler(
-            "ayuda",
-            ayuda
-        )
-    )
-
     print(
-        "eArgentina Battle Bot iniciado..."
+        "eArgentina Battle Bot iniciado"
     )
 
     app.run_polling()
