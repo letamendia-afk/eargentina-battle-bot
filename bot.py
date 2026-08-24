@@ -122,7 +122,7 @@ def get_headers():
 
 
 # ============================================================
-# CONSULTAR BATTLE-STATS
+# CONSULTAR BATTLE-STATS GENERAL
 # ============================================================
 
 def consultar_stats():
@@ -154,36 +154,36 @@ def consultar_stats():
 
 
 # ============================================================
-# BUSCAR TODAS LAS ZONAS DE D3 / D4 / AIR
+# BUSCAR ZONAS ACTIVAS D3 / D4 / AIR
 # ============================================================
 
-def buscar_barras(obj):
+def buscar_zonas(obj):
     encontrados = []
 
     def recorrer(valor):
         if isinstance(valor, dict):
 
-            top_damage = valor.get("top_damage")
+            if (
+                "battle_zone_id" in valor
+                and "division" in valor
+            ):
+                division = valor.get("division")
+                zone_id = valor.get("battle_zone_id")
+                country_id = valor.get("side_country_id")
 
-            if isinstance(top_damage, list):
-                for item in top_damage:
-                    if not isinstance(item, dict):
-                        continue
-
-                    division = item.get("division")
-                    zone_id = item.get("battle_zone_id")
-                    country_id = item.get("side_country_id")
-
-                    if (
-                        division in DIVISIONES
-                        and zone_id
-                        and country_id
-                    ):
-                        encontrados.append({
-                            "division": int(division),
-                            "zone_id": int(zone_id),
-                            "country_id": int(country_id),
-                        })
+                if (
+                    division in DIVISIONES
+                    and zone_id
+                ):
+                    encontrados.append({
+                        "division": int(division),
+                        "zone_id": int(zone_id),
+                        "country_id": (
+                            int(country_id)
+                            if country_id is not None
+                            else None
+                        ),
+                    })
 
             for subvalor in valor.values():
                 recorrer(subvalor)
@@ -197,18 +197,15 @@ def buscar_barras(obj):
     return encontrados
 
 
-# ============================================================
-# ELEGIR LAS ZONAS MÁS NUEVAS
-# ============================================================
-
 def zonas_actuales(encontrados):
+    """
+    Para cada división elegimos el Battle Zone ID más alto.
+    """
+
     resultado = {}
 
     for item in encontrados:
         division = item["division"]
-
-        if division not in DIVISIONES:
-            continue
 
         actual = resultado.get(division)
 
@@ -222,11 +219,11 @@ def zonas_actuales(encontrados):
 
 
 # ============================================================
-# BUSCAR DOMINATION
+# BUSCAR DOMINATION DE UNA ZONA
 # ============================================================
 
-def buscar_domination(obj, battle_zone_id):
-    objetivo = str(battle_zone_id)
+def buscar_domination(obj, zone_id):
+    objetivo = str(zone_id)
     resultados = []
 
     def recorrer(valor):
@@ -236,11 +233,12 @@ def buscar_domination(obj, battle_zone_id):
 
             if isinstance(domination, dict):
                 if objetivo in domination:
-
                     dato = domination[objetivo]
 
                     if isinstance(dato, (int, float)):
-                        resultados.append(float(dato))
+                        resultados.append(
+                            float(dato)
+                        )
 
             for subvalor in valor.values():
                 recorrer(subvalor)
@@ -258,60 +256,54 @@ def buscar_domination(obj, battle_zone_id):
 
 
 # ============================================================
-# DETECTAR PAÍSES
+# BUSCAR PAÍS ASOCIADO A LA BARRA
+# ============================================================
+
+def buscar_pais_barra(obj, zone_id):
+    objetivo = str(zone_id)
+    resultados = []
+
+    def recorrer(valor):
+        if isinstance(valor, dict):
+
+            bar = valor.get("bar")
+
+            if isinstance(bar, dict):
+                if objetivo in bar:
+                    country_id = bar[objetivo]
+
+                    if isinstance(country_id, int):
+                        resultados.append(
+                            country_id
+                        )
+
+            for subvalor in valor.values():
+                recorrer(subvalor)
+
+        elif isinstance(valor, list):
+            for item in valor:
+                recorrer(item)
+
+    recorrer(obj)
+
+    if not resultados:
+        return None
+
+    return resultados[0]
+
+
+# ============================================================
+# DETECTAR LOS DOS PAÍSES
 # ============================================================
 
 def detectar_paises(encontrados):
     ids = set()
 
     for item in encontrados:
-        ids.add(item["country_id"])
+        if item["country_id"] is not None:
+            ids.add(item["country_id"])
 
     return sorted(ids)
-
-
-# ============================================================
-# DEBUG DE UNA BATTLE ZONE
-# ============================================================
-
-def buscar_zone_debug(obj, zone_id):
-    objetivo = str(zone_id)
-    resultados = []
-
-    def recorrer(valor, path="root"):
-
-        if isinstance(valor, dict):
-
-            for clave, subvalor in valor.items():
-
-                if str(clave) == objetivo:
-
-                    contenido = repr(subvalor)
-
-                    if len(contenido) > 1000:
-                        contenido = contenido[:1000] + "..."
-
-                    resultados.append(
-                        f"{path}.{clave} = {contenido}"
-                    )
-
-                recorrer(
-                    subvalor,
-                    f"{path}.{clave}"
-                )
-
-        elif isinstance(valor, list):
-
-            for i, item in enumerate(valor):
-
-                recorrer(
-                    item,
-                    f"{path}[{i}]"
-                )
-
-    recorrer(obj)
-
-    return resultados
 
 
 # ============================================================
@@ -351,75 +343,38 @@ async def test(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     try:
-
         data = consultar_stats()
 
-        encontrados = buscar_barras(data)
+        encontrados = buscar_zonas(
+            data
+        )
 
         if not encontrados:
             raise ValueError(
-                "No encontré datos de D3/D4/AIR."
+                "No encontré zonas de D3/D4/AIR."
             )
-
-        paises_ids = detectar_paises(
-            encontrados
-        )
 
         zonas = zonas_actuales(
             encontrados
         )
 
-        # ----------------------------------------
-        # DEBUG D3 / D4
-        # ----------------------------------------
-
-        debug = []
-
-        for division in [3, 4]:
-
-            if division not in zonas:
-                continue
-
-            zone_id = zonas[
-                division
-            ]["zone_id"]
-
-            encontrados_debug = (
-                buscar_zone_debug(
-                    data,
-                    zone_id
-                )
-            )
-
-            debug.append(
-                f"\n🔎 {DIVISIONES[division]} "
-                f"({zone_id})"
-            )
-
-            if encontrados_debug:
-                debug.extend(
-                    encontrados_debug[:5]
-                )
-            else:
-                debug.append(
-                    "No encontré el Zone ID como clave."
-                )
-
-        # ----------------------------------------
-        # MENSAJE
-        # ----------------------------------------
+        paises_ids = detectar_paises(
+            encontrados
+        )
 
         mensaje = (
             "🔎 Batalla detectada\n\n"
             f"Battle ID: {BATTLE_ID}\n\n"
         )
 
+        # ----------------------------------------------------
+        # PAÍSES DETECTADOS
+        # ----------------------------------------------------
+
         mensaje += "🌎 Países detectados:\n"
 
         for country_id in paises_ids:
-
             nombre = PAISES.get(
                 country_id,
                 f"País {country_id}"
@@ -431,85 +386,96 @@ async def test(
 
         mensaje += "\n"
 
-        # ----------------------------------------
-        # DIVISIONES
-        # ----------------------------------------
+        # ----------------------------------------------------
+        # D3 / D4 / AIR
+        # ----------------------------------------------------
 
-        for division in [3, 4, 11]:
+        for division_id in [3, 4, 11]:
 
             nombre_division = DIVISIONES[
-                division
+                division_id
             ]
 
-            if division not in zonas:
-
+            if division_id not in zonas:
                 mensaje += (
                     f"{nombre_division}\n"
-                    "Sin datos\n\n"
+                    "⚠️ Sin datos\n\n"
                 )
-
                 continue
 
-            zona = zonas[
-                division
-            ]
-
-            zone_id = zona[
-                "zone_id"
-            ]
-
-            country_id = zona[
-                "country_id"
-            ]
+            zone_id = zonas[
+                division_id
+            ]["zone_id"]
 
             porcentaje = buscar_domination(
                 data,
                 zone_id
             )
 
-            pais = PAISES.get(
-                country_id,
-                f"País {country_id}"
+            country_barra = buscar_pais_barra(
+                data,
+                zone_id
             )
 
             mensaje += (
                 f"{nombre_division}\n"
                 f"Zone: {zone_id}\n"
-                f"País asociado: {pais}\n"
             )
 
-            if porcentaje is not None:
+            if porcentaje is None:
+                mensaje += (
+                    "⚠️ Porcentaje no encontrado\n\n"
+                )
+                continue
+
+            porcentaje_otro = (
+                100 - porcentaje
+            )
+
+            if country_barra is not None:
+
+                nombre_barra = PAISES.get(
+                    country_barra,
+                    f"País {country_barra}"
+                )
+
+                otro_pais_id = None
+
+                for country_id in paises_ids:
+                    if country_id != country_barra:
+                        otro_pais_id = country_id
+                        break
+
+                nombre_otro = (
+                    PAISES.get(
+                        otro_pais_id,
+                        f"País {otro_pais_id}"
+                    )
+                    if otro_pais_id is not None
+                    else "Otro país"
+                )
 
                 mensaje += (
-                    f"Barra: "
-                    f"{porcentaje:.2f}% / "
-                    f"{100 - porcentaje:.2f}%\n"
+                    f"• {nombre_barra}: "
+                    f"{porcentaje:.2f}%\n"
+                    f"• {nombre_otro}: "
+                    f"{porcentaje_otro:.2f}%\n\n"
                 )
 
             else:
 
                 mensaje += (
-                    "Barra: no encontrada\n"
+                    f"• Lado A: "
+                    f"{porcentaje:.2f}%\n"
+                    f"• Lado B: "
+                    f"{porcentaje_otro:.2f}%\n\n"
                 )
 
-            mensaje += "\n"
-
-        # ----------------------------------------
-        # DEBUG
-        # ----------------------------------------
-
-        mensaje += "\n🧪 DEBUG\n"
-
-        mensaje += "\n".join(
-            debug
+        mensaje += (
+            "🔗 "
+            f"https://www.erepublik.com/en/military/"
+            f"battlefield/{BATTLE_ID}"
         )
-
-        # Telegram tiene límite de longitud.
-        if len(mensaje) > 3900:
-            mensaje = (
-                mensaje[:3900]
-                + "\n\n... [mensaje recortado]"
-            )
 
         await update.message.reply_text(
             mensaje
