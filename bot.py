@@ -67,15 +67,29 @@ def obtener_csrf_token(session, battle_id):
 
     html = response.text
 
-    patron = r"var csrfToken\s*=\s*'([^']+)'"
-    match = re.search(patron, html)
+    # Forma 1:
+    # var csrfToken = 'xxxxx';
+    match = re.search(
+        r"var\s+csrfToken\s*=\s*['\"]([^'\"]+)['\"]",
+        html
+    )
 
-    if not match:
-        raise ValueError(
-            "No encontré csrfToken en la página."
-        )
+    if match:
+        return match.group(1)
 
-    return match.group(1)
+    # Forma 2:
+    # "csrfToken":"xxxxx"
+    match = re.search(
+        r'["\']csrfToken["\']\s*:\s*["\']([^"\']+)["\']',
+        html
+    )
+
+    if match:
+        return match.group(1)
+
+    raise ValueError(
+        "No encontré csrfToken en la página."
+    )
 
 
 # ============================================================
