@@ -354,7 +354,6 @@ def porcentaje_pais(
     datos_division,
     country_id
 ):
-
     pais_wall = datos_division[
         "country_id"
     ]
@@ -413,7 +412,6 @@ def formatear_score(valor):
 def buscar_batallas_argentina(
     data
 ):
-
     todas = obtener_batallas(
         data
     )
@@ -506,7 +504,6 @@ def buscar_batallas_argentina(
 def obtener_score_argentina(
     item
 ):
-
     batalla = item[
         "batalla"
     ]
@@ -555,7 +552,6 @@ def obtener_score_argentina(
 def obtener_objetivo_auto(
     item
 ):
-
     rival_id = item[
         "rival_id"
     ]
@@ -603,7 +599,6 @@ def argentina_ganaria_division(
     porcentaje_rival,
     argentina_es_defensor
 ):
-
     # Argentina tiene más influencia
     if porcentaje_argentina > porcentaje_rival:
         return True
@@ -612,7 +607,7 @@ def argentina_ganaria_division(
     if porcentaje_argentina < porcentaje_rival:
         return False
 
-    # EMPATE:
+    # Empate:
     # el punto va al defensor
     return argentina_es_defensor
 
@@ -627,10 +622,10 @@ def indicador_division(
     objetivo,
     argentina_es_defensor
 ):
-
-    # Sin regla cargada
+    # Sin regla cargada:
+    # no mostramos ningún símbolo.
     if objetivo is None:
-        return "⚪"
+        return ""
 
     argentina_ganaria = (
         argentina_ganaria_division(
@@ -640,7 +635,6 @@ def indicador_division(
         )
     )
 
-    # Si necesitamos GANAR
     if objetivo == "GANAR":
 
         if argentina_ganaria:
@@ -648,7 +642,6 @@ def indicador_division(
 
         return "🔴"
 
-    # Si necesitamos PERDER
     if objetivo == "PERDER":
 
         if argentina_ganaria:
@@ -656,7 +649,7 @@ def indicador_division(
 
         return "🟢"
 
-    return "⚪"
+    return ""
 
 
 # ============================================================
@@ -666,12 +659,12 @@ def indicador_division(
 def indicador_score(
     puntos_argentina,
     puntos_rival,
-    objetivo,
-    argentina_es_defensor
+    objetivo
 ):
-
+    # Sin regla cargada:
+    # no mostramos símbolo.
     if objetivo is None:
-        return "⚪"
+        return ""
 
     puntos_argentina = float(
         puntos_argentina
@@ -681,37 +674,30 @@ def indicador_score(
         puntos_rival
     )
 
-    # Si Argentina va arriba
-    if puntos_argentina > puntos_rival:
-        argentina_favorecida = True
+    # El empate del score general es neutral.
+    if puntos_argentina == puntos_rival:
+        return ""
 
-    # Si Argentina va abajo
-    elif puntos_argentina < puntos_rival:
-        argentina_favorecida = False
-
-    # Si el score general está empatado,
-    # usamos el rol de defensor como criterio
-    # para no mostrar un estado neutral.
-    else:
-        argentina_favorecida = (
-            argentina_es_defensor
-        )
+    argentina_gana = (
+        puntos_argentina
+        > puntos_rival
+    )
 
     if objetivo == "GANAR":
 
-        if argentina_favorecida:
+        if argentina_gana:
             return "🟢"
 
         return "🔴"
 
     if objetivo == "PERDER":
 
-        if argentina_favorecida:
+        if argentina_gana:
             return "🔴"
 
         return "🟢"
 
-    return "⚪"
+    return ""
 
 
 # ============================================================
@@ -721,7 +707,6 @@ def indicador_score(
 def formatear_batalla_argentina(
     item
 ):
-
     battle_id = item[
         "battle_id"
     ]
@@ -814,9 +799,21 @@ def formatear_batalla_argentina(
     color_score = indicador_score(
         puntos_argentina,
         puntos_rival,
-        objetivo,
-        argentina_es_defensor
+        objetivo
     )
+
+    if color_score:
+
+        texto_score = (
+            f"{color_score} "
+            f"T {score_arg}-{score_rival}"
+        )
+
+    else:
+
+        texto_score = (
+            f"T {score_arg}-{score_rival}"
+        )
 
     # --------------------------------------------------------
     # DIVISIONES
@@ -845,7 +842,7 @@ def formatear_batalla_argentina(
         if datos is None:
 
             partes.append(
-                f"⚪ {nombre} --"
+                f"{nombre} --"
             )
 
             continue
@@ -875,10 +872,21 @@ def formatear_batalla_argentina(
             porcentaje_rival
         )
 
-        partes.append(
-            f"{color} {nombre} "
+        texto_division = (
+            f"{nombre} "
             f"{arg_txt}%-"
             f"{rival_txt}%"
+        )
+
+        if color:
+
+            texto_division = (
+                f"{color} "
+                f"{texto_division}"
+            )
+
+        partes.append(
+            texto_division
         )
 
     linea_divisiones = (
@@ -891,8 +899,7 @@ def formatear_batalla_argentina(
         f"{icono_rol} "
         f"{rival_link}"
         f"{etiqueta_objetivo}\n"
-        f"{color_score} "
-        f"T {score_arg}-{score_rival}"
+        f"{texto_score}"
         f" | "
         f"{linea_divisiones}"
     )
@@ -906,7 +913,6 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     await update.message.reply_text(
         "🇦🇷 eArgentina Battle Bot\n\n"
         "/argentina - Batallas activas "
@@ -924,7 +930,6 @@ async def estado(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     await update.message.reply_text(
         "✅ Bot funcionando\n\n"
         "Fuente: campaignsJson/list\n"
@@ -933,7 +938,8 @@ async def estado(
         "Reglas automáticas:\n"
         "🇨🇱 Chile → gana defensor\n\n"
         "Empates de división → "
-        "ganador: defensor"
+        "ganador: defensor\n"
+        "Empate en tanteador total → neutral"
     )
 
 
@@ -945,7 +951,6 @@ async def argentina(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     try:
 
         data = consultar_campanas()
@@ -1010,7 +1015,6 @@ async def test(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
-
     try:
 
         data = consultar_campanas()
