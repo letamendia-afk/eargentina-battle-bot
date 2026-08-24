@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 # CONFIGURACIÓN
 # ============================================================
 
-BATTLE_ID = 931105
+BATTLE_ID = 930844
 
 DIVISIONES = {
     3: "D3",
