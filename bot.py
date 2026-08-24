@@ -15,7 +15,7 @@ BATTLE_ID = 931105
 
 # Cualquier Battle Zone válida de esta batalla.
 # En este caso usamos una que sabemos que pertenece a la batalla.
-PAGE_ZONE_ID = 41419149
+PAGE_ZONE_ID = 41421720
 
 DIVISIONES = {
     3: "D3",
