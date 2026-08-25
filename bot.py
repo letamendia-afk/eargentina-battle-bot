@@ -12,14 +12,10 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 
 EREPUBLIK_BASE_URL = "https://www.erepublik.com"
 
-# Por defecto Argentina.
-# En el futuro, para otro cliente, se podrá cambiar sin tocar
-# la lógica del bot.
 MONITORED_COUNTRY_ID = int(
     os.getenv("MONITORED_COUNTRY_ID", "27")
 )
 
-# Batalla conocida para /test.
 BATTLE_ID_TEST = 931103
 
 DIVISIONES = {
@@ -27,6 +23,18 @@ DIVISIONES = {
     4: "D4",
     11: "A",
 }
+
+
+# ============================================================
+# ADMINISTRADORES
+# ============================================================
+#
+# Primero usaremos /id para obtener tu Telegram User ID.
+# Después lo agregaremos acá o, mejor aún, como variable
+# de entorno.
+# ============================================================
+
+ADMIN_TELEGRAM_IDS = set()
 
 
 # ============================================================
@@ -117,20 +125,44 @@ MONITORED_COUNTRY_NAME = PAISES.get(
 
 
 # ============================================================
+# NORMALIZACIÓN DE NOMBRES
+# ============================================================
+
+def normalizar_texto(texto):
+    return (
+        texto.lower()
+        .strip()
+        .replace("-", " ")
+        .replace("_", " ")
+    )
+
+
+def buscar_country_id(nombre):
+    buscado = normalizar_texto(nombre)
+
+    for country_id, country_name in PAISES.items():
+
+        if normalizar_texto(country_name) == buscado:
+            return country_id
+
+    return None
+
+
+# ============================================================
 # REGLAS DE CAMPAÑA
 # ============================================================
 #
-# La clave es el ID del rival.
+# Por ahora viven en memoria.
 #
-# "DEFENSOR" -> debe ganar el defensor
-# "ATACANTE" -> debe ganar el atacante
+# Valores:
+# DEFENSOR
+# ATACANTE
 #
-# Luego el bot deduce automáticamente si el país monitoreado
-# debe GANAR o PERDER.
+# Chile queda precargado para conservar la regla actual.
 # ============================================================
 
 REGLAS_CAMPANIA = {
-    64: "DEFENSOR",   # Chile: gana defensor hasta nueva orden
+    64: "DEFENSOR",
 }
 
 
@@ -201,7 +233,7 @@ def consultar_campanas():
 
 
 # ============================================================
-# ENCONTRAR OBJETOS DE BATALLA
+# ENCONTRAR BATALLAS
 # ============================================================
 
 def obtener_batallas(data):
@@ -242,10 +274,6 @@ def obtener_batallas(data):
 
     return resultado
 
-
-# ============================================================
-# BUSCAR BATALLA
-# ============================================================
 
 def buscar_batalla(data, battle_id):
     return obtener_batallas(data).get(
@@ -333,7 +361,7 @@ def obtener_divisiones(batalla):
 
 
 # ============================================================
-# PORCENTAJE DE UN PAÍS
+# PORCENTAJE
 # ============================================================
 
 def porcentaje_pais(
@@ -388,7 +416,7 @@ def formatear_score(valor):
 
 
 # ============================================================
-# BUSCAR BATALLAS DEL PAÍS MONITOREADO
+# BUSCAR BATALLAS DEL PAÍS
 # ============================================================
 
 def buscar_batallas_pais(
@@ -415,13 +443,8 @@ def buscar_batallas_pais(
         defender_id = defender.get("id")
 
         try:
-            invader_id = int(
-                invader_id
-            )
-
-            defender_id = int(
-                defender_id
-            )
+            invader_id = int(invader_id)
+            defender_id = int(defender_id)
 
         except (TypeError, ValueError):
             continue
@@ -562,7 +585,7 @@ def obtener_objetivo_auto(item):
 
 
 # ============================================================
-# GANADOR SI LA DIVISIÓN TERMINARA AHORA
+# GANADOR DE DIVISIÓN
 # ============================================================
 
 def pais_ganaria_division(
@@ -570,6 +593,7 @@ def pais_ganaria_division(
     porcentaje_rival,
     pais_es_defensor
 ):
+
     if (
         porcentaje_pais_actual
         > porcentaje_rival
@@ -582,12 +606,13 @@ def pais_ganaria_division(
     ):
         return False
 
-    # En empate, gana el defensor.
+    # Empate:
+    # gana el defensor.
     return pais_es_defensor
 
 
 # ============================================================
-# INDICADOR DE DIVISIÓN
+# INDICADORES
 # ============================================================
 
 def indicador_division(
@@ -596,8 +621,7 @@ def indicador_division(
     objetivo,
     pais_es_defensor
 ):
-    # Sin orden:
-    # no mostramos ningún color.
+
     if objetivo is None:
         return ""
 
@@ -626,15 +650,12 @@ def indicador_division(
     return ""
 
 
-# ============================================================
-# INDICADOR DEL SCORE TOTAL
-# ============================================================
-
 def indicador_score(
     puntos_pais,
     puntos_rival,
     objetivo
 ):
+
     if objetivo is None:
         return ""
 
@@ -646,7 +667,8 @@ def indicador_score(
         puntos_rival
     )
 
-    # En el tanteador general un empate es neutral.
+    # Empate general:
+    # neutral.
     if puntos_pais == puntos_rival:
         return ""
 
@@ -657,17 +679,19 @@ def indicador_score(
 
     if objetivo == "GANAR":
 
-        if pais_gana:
-            return "🟢"
-
-        return "🔴"
+        return (
+            "🟢"
+            if pais_gana
+            else "🔴"
+        )
 
     if objetivo == "PERDER":
 
-        if pais_gana:
-            return "🔴"
-
-        return "🟢"
+        return (
+            "🔴"
+            if pais_gana
+            else "🟢"
+        )
 
     return ""
 
@@ -709,19 +733,13 @@ def formatear_batalla_pais(item):
         == country_id
     )
 
-    # --------------------------------------------------------
-    # ROL
-    # --------------------------------------------------------
-
+    # Rol
     if rol == "atacante":
         icono_rol = "⚔️"
     else:
         icono_rol = "🛡️"
 
-    # --------------------------------------------------------
-    # LINK
-    # --------------------------------------------------------
-
+    # Link
     url = (
         f"{EREPUBLIK_BASE_URL}/"
         "en/military/battlefield/"
@@ -734,10 +752,7 @@ def formatear_batalla_pais(item):
         f'</a>'
     )
 
-    # --------------------------------------------------------
-    # OBJETIVO
-    # --------------------------------------------------------
-
+    # Objetivo
     objetivo = obtener_objetivo_auto(
         item
     )
@@ -753,10 +768,7 @@ def formatear_batalla_pais(item):
             f"{objetivo}</b>"
         )
 
-    # --------------------------------------------------------
-    # SCORE TOTAL
-    # --------------------------------------------------------
-
+    # Score
     puntos_pais, puntos_rival = (
         obtener_score_pais(
             item
@@ -790,10 +802,7 @@ def formatear_batalla_pais(item):
             f"T {score_pais}-{score_rival}"
         )
 
-    # --------------------------------------------------------
-    # DIVISIONES
-    # --------------------------------------------------------
-
+    # Divisiones
     divisiones = obtener_divisiones(
         batalla
     )
@@ -866,19 +875,242 @@ def formatear_batalla_pais(item):
             texto_division
         )
 
-    linea_divisiones = (
-        " | ".join(
-            partes
-        )
-    )
-
     return (
         f"{icono_rol} "
         f"{rival_link}"
         f"{etiqueta_objetivo}\n"
         f"{texto_score}"
         f" | "
-        f"{linea_divisiones}"
+        + " | ".join(partes)
+    )
+
+
+# ============================================================
+# PERMISOS
+# ============================================================
+
+def es_admin(update: Update):
+
+    if not update.effective_user:
+        return False
+
+    return (
+        update.effective_user.id
+        in ADMIN_TELEGRAM_IDS
+    )
+
+
+# ============================================================
+# /ID
+# ============================================================
+
+async def mostrar_id(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    user_id = (
+        update.effective_user.id
+        if update.effective_user
+        else None
+    )
+
+    chat_id = (
+        update.effective_chat.id
+        if update.effective_chat
+        else None
+    )
+
+    await update.message.reply_text(
+        "🆔 Datos de Telegram\n\n"
+        f"User ID: {user_id}\n"
+        f"Chat ID: {chat_id}"
+    )
+
+
+# ============================================================
+# /ORDEN
+# ============================================================
+
+async def orden(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not es_admin(update):
+
+        await update.message.reply_text(
+            "⛔ Este comando está reservado "
+            "a administradores."
+        )
+
+        return
+
+    if len(context.args) < 2:
+
+        await update.message.reply_text(
+            "Uso:\n"
+            "/orden Chile defensor\n"
+            "/orden Chile atacante"
+        )
+
+        return
+
+    regla = context.args[-1].upper()
+
+    if regla not in {
+        "DEFENSOR",
+        "ATACANTE"
+    }:
+
+        await update.message.reply_text(
+            "La orden debe terminar en:\n"
+            "defensor o atacante"
+        )
+
+        return
+
+    nombre = " ".join(
+        context.args[:-1]
+    )
+
+    country_id = buscar_country_id(
+        nombre
+    )
+
+    if country_id is None:
+
+        await update.message.reply_text(
+            f"❌ No encontré el país: {nombre}"
+        )
+
+        return
+
+    if country_id == MONITORED_COUNTRY_ID:
+
+        await update.message.reply_text(
+            "❌ No corresponde cargar una "
+            "regla contra el propio país monitoreado."
+        )
+
+        return
+
+    REGLAS_CAMPANIA[
+        country_id
+    ] = regla
+
+    await update.message.reply_text(
+        "✅ Orden actualizada\n\n"
+        f"{nombre_pais(country_id)} → "
+        f"gana {regla}"
+    )
+
+
+# ============================================================
+# /SINORDEN
+# ============================================================
+
+async def sinorden(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not es_admin(update):
+
+        await update.message.reply_text(
+            "⛔ Este comando está reservado "
+            "a administradores."
+        )
+
+        return
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "Uso:\n"
+            "/sinorden Chile"
+        )
+
+        return
+
+    nombre = " ".join(
+        context.args
+    )
+
+    country_id = buscar_country_id(
+        nombre
+    )
+
+    if country_id is None:
+
+        await update.message.reply_text(
+            f"❌ No encontré el país: {nombre}"
+        )
+
+        return
+
+    if country_id not in REGLAS_CAMPANIA:
+
+        await update.message.reply_text(
+            f"{nombre_pais(country_id)} "
+            "no tiene una orden cargada."
+        )
+
+        return
+
+    del REGLAS_CAMPANIA[
+        country_id
+    ]
+
+    await update.message.reply_text(
+        "✅ Orden eliminada\n\n"
+        f"{nombre_pais(country_id)}"
+    )
+
+
+# ============================================================
+# /ORDENES
+# ============================================================
+
+async def ordenes(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not REGLAS_CAMPANIA:
+
+        await update.message.reply_text(
+            "📋 No hay órdenes cargadas."
+        )
+
+        return
+
+    lineas = [
+        "📋 ÓRDENES ACTIVAS",
+        ""
+    ]
+
+    for country_id, regla in sorted(
+        REGLAS_CAMPANIA.items(),
+        key=lambda x: nombre_pais(
+            x[0]
+        )
+    ):
+
+        lineas.append(
+            f"• {nombre_pais(country_id)} "
+            f"→ {regla}"
+        )
+
+    lineas.extend([
+        "",
+        "⚠️ Las órdenes actuales viven "
+        "en memoria y todavía no sobreviven "
+        "a un reinicio del bot."
+    ])
+
+    await update.message.reply_text(
+        "\n".join(lineas)
     )
 
 
@@ -890,12 +1122,12 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     await update.message.reply_text(
         "🌎 eRepublik Country Monitor\n\n"
-        "/batallas - Batallas activas "
-        "del país monitoreado\n"
-        "/argentina - Alias temporal\n"
-        "/test - Batalla de control\n"
+        "/batallas - Batallas activas\n"
+        "/ordenes - Órdenes actuales\n"
+        "/id - Ver IDs de Telegram\n"
         "/estado - Estado del bot"
     )
 
@@ -908,16 +1140,16 @@ async def estado(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     await update.message.reply_text(
         "✅ Bot funcionando\n\n"
-        "Fuente: campaignsJson/list\n"
         f"País monitoreado: "
         f"{MONITORED_COUNTRY_NAME} "
-        f"({MONITORED_COUNTRY_ID})\n\n"
-        "Reglas automáticas actuales:\n"
-        "Chile → gana defensor\n\n"
-        "Empate de división → gana defensor\n"
-        "Empate del tanteador total → neutral"
+        f"({MONITORED_COUNTRY_ID})\n"
+        f"Órdenes cargadas: "
+        f"{len(REGLAS_CAMPANIA)}\n\n"
+        "Empate de división → defensor\n"
+        "Empate de score total → neutral"
     )
 
 
@@ -929,6 +1161,7 @@ async def mostrar_batallas(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     try:
 
         data = consultar_campanas()
@@ -942,35 +1175,27 @@ async def mostrar_batallas(
 
             await update.message.reply_text(
                 f"{MONITORED_COUNTRY_NAME} "
-                "no tiene batallas activas "
-                "en este momento."
+                "no tiene batallas activas."
             )
 
             return
 
-        bloques = []
-
-        for item in batallas:
-
-            bloques.append(
-                formatear_batalla_pais(
-                    item
-                )
-            )
+        bloques = [
+            formatear_batalla_pais(item)
+            for item in batallas
+        ]
 
         mensaje = (
             f"🌎 <b>BATALLAS DE "
             f"{html.escape(MONITORED_COUNTRY_NAME.upper())}"
             f"</b>\n"
             f"Activas: {len(batallas)}\n\n"
-            + "\n\n".join(
-                bloques
-            )
+            + "\n\n".join(bloques)
             + "\n\n"
             + "ℹ️ <b>[AUTO]</b>: objetivo "
-              "deducido automáticamente de la "
-              "regla cargada; puede estar "
-              "equivocado si cambió el acuerdo."
+              "deducido de la regla cargada; "
+              "puede estar equivocado si "
+              "cambió el acuerdo."
         )
 
         await update.message.reply_text(
@@ -995,6 +1220,7 @@ async def test(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
     try:
 
         data = consultar_campanas()
@@ -1008,8 +1234,7 @@ async def test(
 
             raise ValueError(
                 f"No encontré la batalla "
-                f"{BATTLE_ID_TEST} entre "
-                f"las campañas activas."
+                f"{BATTLE_ID_TEST}."
             )
 
         inv = batalla.get(
@@ -1030,83 +1255,11 @@ async def test(
             defender["id"]
         )
 
-        atacante = nombre_pais(
-            invader_id
-        )
-
-        defensor = nombre_pais(
-            defender_id
-        )
-
-        puntos_atacante = inv.get(
-            "points",
-            0
-        )
-
-        puntos_defensor = defender.get(
-            "points",
-            0
-        )
-
-        divisiones = obtener_divisiones(
-            batalla
-        )
-
-        mensaje = (
-            "🧪 BATALLA DE CONTROL\n\n"
-            f"Battle ID: "
-            f"{BATTLE_ID_TEST}\n"
-            f"🛡️ {defensor}: "
-            f"{formatear_score(puntos_defensor)}\n"
-            f"⚔️ {atacante}: "
-            f"{formatear_score(puntos_atacante)}\n\n"
-        )
-
-        for division_id in [
-            3,
-            4,
-            11
-        ]:
-
-            nombre = DIVISIONES[
-                division_id
-            ]
-
-            datos = divisiones.get(
-                division_id
-            )
-
-            if datos is None:
-
-                mensaje += (
-                    f"{nombre}: "
-                    f"sin datos\n"
-                )
-
-                continue
-
-            porcentaje_defensor = (
-                porcentaje_pais(
-                    datos,
-                    defender_id
-                )
-            )
-
-            porcentaje_atacante = (
-                100
-                - porcentaje_defensor
-            )
-
-            mensaje += (
-                f"{nombre}: "
-                f"{defensor} "
-                f"{porcentaje_defensor:.2f}% | "
-                f"{atacante} "
-                f"{porcentaje_atacante:.2f}%\n"
-            )
-
         await update.message.reply_text(
-            mensaje
+            "🧪 BATALLA DE CONTROL\n\n"
+            f"Battle ID: {BATTLE_ID_TEST}\n"
+            f"🛡️ {nombre_pais(defender_id)}\n"
+            f"⚔️ {nombre_pais(invader_id)}"
         )
 
     except Exception as e:
@@ -1158,6 +1311,34 @@ def main():
 
     app.add_handler(
         CommandHandler(
+            "id",
+            mostrar_id
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "orden",
+            orden
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "sinorden",
+            sinorden
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
+            "ordenes",
+            ordenes
+        )
+    )
+
+    app.add_handler(
+        CommandHandler(
             "test",
             test
         )
@@ -1170,7 +1351,6 @@ def main():
         )
     )
 
-    # Alias mientras seguimos usándolo para Argentina.
     app.add_handler(
         CommandHandler(
             "argentina",
