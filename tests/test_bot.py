@@ -71,6 +71,11 @@ class BotHelpersTest(unittest.TestCase):
             )
         )
 
+    def test_formatear_intervalo_prefers_minutes_when_possible(self):
+        self.assertEqual(bot.formatear_intervalo(60), "1 minuto")
+        self.assertEqual(bot.formatear_intervalo(300), "5 minutos")
+        self.assertEqual(bot.formatear_intervalo(90), "90 segundos")
+
     def test_resolver_monitor_por_texto_matches_known_forms(self):
         fake_monitor = {
             "id": 7,
@@ -126,6 +131,107 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(len(bloques), 2)
         self.assertIn("🚨 ALERTAS - Argentina", bloques[0])
         self.assertIn("✅ RECUPERACIONES - Argentina", bloques[1])
+
+    def test_procesar_estados_alerta_no_repite_misma_senal(self):
+        class FakeCursor:
+            def __init__(self):
+                self.executed = []
+
+            def execute(self, query, params=None):
+                self.executed.append((query.strip(), params))
+
+            def fetchall(self):
+                return [(101, "T", True)]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeConn:
+            def __init__(self):
+                self.cursor_obj = FakeCursor()
+
+            def cursor(self):
+                return self.cursor_obj
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        fake_conn = FakeConn()
+
+        with patch.object(bot, "conectar_db", return_value=fake_conn):
+            eventos = bot.procesar_estados_alerta(
+                1,
+                [
+                    {
+                        "battle_id": 101,
+                        "rival_id": 64,
+                        "objetivo": "GANAR",
+                        "problemas": ["T"],
+                        "signature": "T",
+                        "resumen": "T 1-0",
+                    }
+                ],
+            )
+
+        self.assertEqual(eventos, [])
+        self.assertGreaterEqual(len(fake_conn.cursor_obj.executed), 2)
+
+    def test_procesar_estados_alerta_notifica_recuperacion(self):
+        class FakeCursor:
+            def __init__(self):
+                self.executed = []
+
+            def execute(self, query, params=None):
+                self.executed.append((query.strip(), params))
+
+            def fetchall(self):
+                return [(202, "T", True)]
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        class FakeConn:
+            def __init__(self):
+                self.cursor_obj = FakeCursor()
+
+            def cursor(self):
+                return self.cursor_obj
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        fake_conn = FakeConn()
+
+        with patch.object(bot, "conectar_db", return_value=fake_conn):
+            eventos = bot.procesar_estados_alerta(
+                1,
+                [
+                    {
+                        "battle_id": 202,
+                        "rival_id": 64,
+                        "objetivo": "GANAR",
+                        "problemas": [],
+                        "signature": "OK",
+                        "resumen": "T 1-0",
+                    }
+                ],
+            )
+
+        self.assertEqual(len(eventos), 1)
+        self.assertEqual(eventos[0]["tipo"], "recuperado")
+        self.assertEqual(eventos[0]["signature"], "OK")
 
 
 class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):

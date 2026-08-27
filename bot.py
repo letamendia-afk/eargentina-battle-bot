@@ -109,6 +109,18 @@ def formatear_score(valor):
         return "?"
 
 
+def formatear_intervalo(segundos):
+    segundos = int(segundos)
+    if segundos % 60 == 0:
+        minutos = segundos // 60
+        if minutos == 1:
+            return "1 minuto"
+        return f"{minutos} minutos"
+    if segundos == 1:
+        return "1 segundo"
+    return f"{segundos} segundos"
+
+
 def valor_bool(texto, default=False):
     if texto is None:
         return default
@@ -1630,7 +1642,7 @@ async def estado(
             "Persistencia: PostgreSQL ✅\n"
             f"Monitor automático: "
             f"{'✅' if config['enabled'] else '⏸️'}\n"
-            f"Intervalo: {config['interval']} s\n\n"
+            f"Intervalo: {formatear_intervalo(config['interval'])}\n\n"
             "Empate de división → defensor\n"
             "Empate de score total → neutral"
         )
@@ -1747,7 +1759,7 @@ async def monitor_status(
             "📡 MONITOR AUTOMÁTICO\n\n"
             f"País: {monitor['name']}\n"
             f"Estado: {'ACTIVO ✅' if config['enabled'] else 'PAUSADO ⏸️'}\n"
-            f"Intervalo: {config['interval']} segundos\n"
+            f"Intervalo: {formatear_intervalo(config['interval'])}\n"
             f"Chat de alertas: {config['chat_id'] or 'sin configurar'}\n"
             f"Última revisión: {last_check}\n"
             f"Último error: {last_error}\n\n"
@@ -1824,8 +1836,8 @@ async def intervalo(
         if not context.args:
             await update.message.reply_text(
                 f"Uso: /intervalo N\n"
-                f"Mínimo {MIN_MONITOR_INTERVAL_SECONDS}, "
-                f"máximo {MAX_MONITOR_INTERVAL_SECONDS} segundos."
+                f"Mínimo {formatear_intervalo(MIN_MONITOR_INTERVAL_SECONDS)}, "
+                f"máximo {formatear_intervalo(MAX_MONITOR_INTERVAL_SECONDS)}."
             )
             return
 
@@ -1844,8 +1856,8 @@ async def intervalo(
         ):
             await update.message.reply_text(
                 f"❌ Usá entre "
-                f"{MIN_MONITOR_INTERVAL_SECONDS} y "
-                f"{MAX_MONITOR_INTERVAL_SECONDS} segundos."
+                f"{formatear_intervalo(MIN_MONITOR_INTERVAL_SECONDS)} y "
+                f"{formatear_intervalo(MAX_MONITOR_INTERVAL_SECONDS)}."
             )
             return
 
@@ -1856,7 +1868,7 @@ async def intervalo(
         )
 
         await update.message.reply_text(
-            f"✅ Intervalo actualizado: {segundos} segundos."
+            f"✅ Intervalo actualizado: {formatear_intervalo(segundos)}."
         )
 
     except Exception as exc:

@@ -26,7 +26,7 @@ El proyecto nació para Argentina, pero la lógica y la base están preparadas p
 - `/ordenes` — lista órdenes activas.
 - `/monitor` — muestra estado del monitor automático.
 - `/alertas on|off` — activa o pausa alertas y, al activar, usa el chat actual como destino. Solo administradores.
-- `/intervalo <segundos>` — cambia el intervalo de revisión (30 a 3600 s). Solo administradores.
+- `/intervalo <segundos>` — cambia el intervalo de revisión (de 30 segundos a 1 hora). Solo administradores.
 - `/chequear` — fuerza una revisión manual. Solo administradores.
 - `/estado` — estado general del bot.
 - `/id` — muestra User ID y Chat ID de Telegram.
