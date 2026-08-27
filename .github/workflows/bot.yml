@@ -2,6 +2,13 @@ name: eArgentina Battle Bot
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "bot.py"
+      - "requirements.txt"
+      - ".github/workflows/bot.yml"
   schedule:
     - cron: "0 */5 * * *"
 
