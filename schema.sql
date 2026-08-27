@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS country_settings (
     UNIQUE (monitored_country_id, setting_key)
 );
 
+CREATE TABLE IF NOT EXISTS chat_country_preferences (
+    chat_id BIGINT PRIMARY KEY,
+    monitored_country_id BIGINT NOT NULL
+        REFERENCES monitored_countries(id)
+        ON DELETE CASCADE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS monitor_alert_state (
     monitored_country_id BIGINT NOT NULL
         REFERENCES monitored_countries(id)
@@ -68,6 +76,9 @@ ON campaign_orders (monitored_country_id);
 
 CREATE INDEX IF NOT EXISTS idx_campaign_orders_opponent
 ON campaign_orders (opponent_country_id);
+
+CREATE INDEX IF NOT EXISTS idx_chat_country_preferences_country
+ON chat_country_preferences (monitored_country_id);
 
 CREATE INDEX IF NOT EXISTS idx_monitor_alert_state_updated
 ON monitor_alert_state (updated_at);

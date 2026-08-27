@@ -18,6 +18,8 @@ El proyecto nació para Argentina, pero la lógica y la base están preparadas p
 ## Comandos
 
 - `/batallas` — lista batallas activas.
+- `/pais <país>` — fija el país monitoreado para este chat. `/pais reset` vuelve al país por defecto.
+- `/paises` — lista los países activos configurados en la base.
 - `/<alias_pais>` — alias configurado en `monitored_countries.telegram_command`.
 - `/orden <pais> defensor|atacante` — crea o actualiza una orden. Solo administradores.
 - `/sinorden <pais>` — desactiva una orden. Solo administradores.
@@ -51,11 +53,14 @@ Tablas principales:
 - `country_admins`
 - `campaign_orders`
 - `country_settings`
+- `chat_country_preferences`
 - `monitor_alert_state`
 
 ## Monitor automático
 
 Por defecto revisa cada 60 segundos. Solo evalúa campañas que tengan una orden activa.
+
+El monitor lee todos los países activos configurados en `monitored_countries` y respeta el intervalo y el chat de alertas de cada uno. Si en un chat querés trabajar con otro país, usá `/pais <país>` para fijar el contexto de ese chat.
 
 Una alerta se genera cuando cambia el conjunto de elementos que están fuera del objetivo (tanteador total, D3, D4 o Air). Si la situación no cambia, no vuelve a enviar la misma alerta. Cuando todo vuelve a estar alineado, envía un aviso de recuperación.
 

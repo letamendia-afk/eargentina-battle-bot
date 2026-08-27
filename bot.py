@@ -2,6 +2,7 @@ import os
 import re
 import html
 import asyncio
+from functools import partial
 from datetime import datetime, timezone
 
 import psycopg
@@ -113,6 +114,208 @@ def valor_bool(texto, default=False):
     return str(texto).strip().lower() in {"1", "true", "yes", "si", "sí", "on"}
 
 
+def fila_a_monitor(row):
+    return {
+        "id": int(row[0]),
+        "erepublik_country_id": int(row[1]),
+        "name": str(row[2]),
+        "telegram_command": str(row[3]),
+    }
+
+
+def obtener_monitor_por_id(monitor_id):
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    erepublik_country_id,
+                    name,
+                    telegram_command
+                FROM monitored_countries
+                WHERE id = %s
+                  AND active = TRUE
+                LIMIT 1
+                """,
+                (int(monitor_id),),
+            )
+            row = cur.fetchone()
+    return fila_a_monitor(row) if row else None
+
+
+def obtener_monitor_por_country_id(country_id):
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    erepublik_country_id,
+                    name,
+                    telegram_command
+                FROM monitored_countries
+                WHERE erepublik_country_id = %s
+                  AND active = TRUE
+                LIMIT 1
+                """,
+                (int(country_id),),
+            )
+            row = cur.fetchone()
+    return fila_a_monitor(row) if row else None
+
+
+def obtener_monitores_activos():
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    erepublik_country_id,
+                    name,
+                    telegram_command
+                FROM monitored_countries
+                WHERE active = TRUE
+                ORDER BY name, erepublik_country_id
+                """
+            )
+            return [fila_a_monitor(row) for row in cur.fetchall()]
+
+
+def obtener_monitor_por_alias(alias):
+    alias_normalizado = normalizar_texto(alias).replace(" ", "")
+
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    erepublik_country_id,
+                    name,
+                    telegram_command
+                FROM monitored_countries
+                WHERE active = TRUE
+                """
+            )
+            for row in cur.fetchall():
+                monitor = fila_a_monitor(row)
+                if normalizar_texto(monitor["telegram_command"]).replace(" ", "") == alias_normalizado:
+                    return monitor
+                if normalizar_texto(monitor["name"]).replace(" ", "") == alias_normalizado:
+                    return monitor
+
+    return None
+
+
+def obtener_monitor_predeterminado():
+    monitor = obtener_monitor_por_country_id(MONITORED_COUNTRY_ID)
+    if monitor:
+        return monitor
+
+    monitores = obtener_monitores_activos()
+    if monitores:
+        return monitores[0]
+
+    raise ValueError("No hay países monitoreados activos en monitored_countries")
+
+
+def obtener_preferencia_chat(chat_id):
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT monitored_country_id
+                FROM chat_country_preferences
+                WHERE chat_id = %s
+                LIMIT 1
+                """,
+                (int(chat_id),),
+            )
+            row = cur.fetchone()
+
+    if row is None:
+        return None
+
+    return obtener_monitor_por_id(row[0])
+
+
+def guardar_preferencia_chat(chat_id, monitor_id):
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO chat_country_preferences (
+                    chat_id,
+                    monitored_country_id,
+                    updated_at
+                )
+                VALUES (%s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (chat_id)
+                DO UPDATE SET
+                    monitored_country_id = EXCLUDED.monitored_country_id,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (int(chat_id), int(monitor_id)),
+            )
+
+
+def borrar_preferencia_chat(chat_id):
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM chat_country_preferences
+                WHERE chat_id = %s
+                """,
+                (int(chat_id),),
+            )
+
+
+def resolver_monitor_por_texto(texto):
+    if texto is None:
+        return None
+
+    texto_limpio = str(texto).strip()
+    if not texto_limpio:
+        return None
+
+    if texto_limpio.isdigit():
+        numero = int(texto_limpio)
+        monitor = obtener_monitor_por_id(numero)
+        if monitor:
+            return monitor
+        monitor = obtener_monitor_por_country_id(numero)
+        if monitor:
+            return monitor
+
+    pais_id = buscar_country_id(texto_limpio)
+    if pais_id is not None:
+        monitor = obtener_monitor_por_country_id(pais_id)
+        if monitor:
+            return monitor
+
+    monitor = obtener_monitor_por_alias(texto_limpio)
+    if monitor:
+        return monitor
+
+    return None
+
+
+def resolver_monitor_contexto(update, context=None):
+    if update and update.effective_chat:
+        preferido = obtener_preferencia_chat(update.effective_chat.id)
+        if preferido:
+            return preferido
+
+    return obtener_monitor_predeterminado()
+
+
+def obtener_monitor_actual():
+    return obtener_monitor_predeterminado()
+
+
 # ============================================================
 # POSTGRESQL
 # ============================================================
@@ -136,6 +339,17 @@ def asegurar_esquema_monitor():
         with conn.cursor() as cur:
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS chat_country_preferences (
+                    chat_id BIGINT PRIMARY KEY,
+                    monitored_country_id BIGINT NOT NULL
+                        REFERENCES monitored_countries(id)
+                        ON DELETE CASCADE,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS monitor_alert_state (
                     monitored_country_id BIGINT NOT NULL
                         REFERENCES monitored_countries(id)
@@ -156,44 +370,15 @@ def asegurar_esquema_monitor():
             )
 
 
-def obtener_monitor_actual():
-    with conectar_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                    id,
-                    erepublik_country_id,
-                    name,
-                    telegram_command
-                FROM monitored_countries
-                WHERE erepublik_country_id = %s
-                  AND active = TRUE
-                LIMIT 1
-                """,
-                (MONITORED_COUNTRY_ID,),
-            )
-            row = cur.fetchone()
-
-    if row is None:
-        raise ValueError(
-            "El país monitoreado no existe o está inactivo "
-            "en monitored_countries"
-        )
-
-    return {
-        "id": int(row[0]),
-        "erepublik_country_id": int(row[1]),
-        "name": str(row[2]),
-        "telegram_command": str(row[3]),
-    }
-
-
-def es_admin(update: Update):
+def es_admin(update: Update, monitor_id=None):
     if not update.effective_user:
         return False
 
-    monitor = obtener_monitor_actual()
+    monitor = (
+        obtener_monitor_por_id(monitor_id)
+        if monitor_id is not None
+        else resolver_monitor_contexto(update)
+    )
     user_id = int(update.effective_user.id)
 
     with conectar_db() as conn:
@@ -268,8 +453,15 @@ def guardar_setting(monitor_id, key, value):
             )
 
 
-def obtener_config_monitor():
-    monitor = obtener_monitor_actual()
+def obtener_config_monitor(monitor_id=None):
+    monitor = (
+        obtener_monitor_por_id(monitor_id)
+        if monitor_id is not None
+        else resolver_monitor_contexto(None)
+    )
+
+    if monitor is None:
+        raise ValueError("No se encontró el país monitoreado")
 
     enabled = valor_bool(
         obtener_setting(monitor["id"], "alerts_enabled", "true"),
@@ -311,13 +503,15 @@ def obtener_config_monitor():
     }
 
 
-def obtener_reglas_campania(country_id):
-    monitor = obtener_monitor_actual()
+def obtener_reglas_campania(monitor_id=None):
+    monitor = (
+        obtener_monitor_por_id(monitor_id)
+        if monitor_id is not None
+        else resolver_monitor_contexto(None)
+    )
 
-    if monitor["erepublik_country_id"] != int(country_id):
-        raise ValueError(
-            "El país solicitado no coincide con el monitor activo"
-        )
+    if monitor is None:
+        raise ValueError("No se encontró el país monitoreado")
 
     reglas = {}
 
@@ -340,8 +534,11 @@ def obtener_reglas_campania(country_id):
     return reglas
 
 
-def guardar_orden(opponent_country_id, regla_app, telegram_user_id):
-    monitor = obtener_monitor_actual()
+def guardar_orden(monitor_id, opponent_country_id, regla_app, telegram_user_id):
+    monitor = obtener_monitor_por_id(monitor_id)
+    if monitor is None:
+        raise ValueError("No se encontró el país monitoreado")
+
     winner_side = APP_TO_DB_RULE[regla_app]
 
     with conectar_db() as conn:
@@ -376,8 +573,10 @@ def guardar_orden(opponent_country_id, regla_app, telegram_user_id):
             )
 
 
-def desactivar_orden(opponent_country_id):
-    monitor = obtener_monitor_actual()
+def desactivar_orden(monitor_id, opponent_country_id):
+    monitor = obtener_monitor_por_id(monitor_id)
+    if monitor is None:
+        raise ValueError("No se encontró el país monitoreado")
 
     with conectar_db() as conn:
         with conn.cursor() as cur:
@@ -865,8 +1064,8 @@ def procesar_estados_alerta(monitor_id, evaluaciones):
     return eventos
 
 
-def evaluar_monitor_sync():
-    config = obtener_config_monitor()
+def evaluar_monitor_sync(monitor_id=None):
+    config = obtener_config_monitor(monitor_id)
     monitor = config["monitor"]
 
     if not config["enabled"]:
@@ -876,9 +1075,7 @@ def evaluar_monitor_sync():
             "checked": False,
         }
 
-    reglas = obtener_reglas_campania(
-        monitor["erepublik_country_id"]
-    )
+    reglas = obtener_reglas_campania(monitor["id"])
 
     data = consultar_campanas()
     batallas = buscar_batallas_pais(
@@ -948,6 +1145,101 @@ def formatear_evento_alerta(evento):
     )
 
 
+def formatear_evento_alerta_resumen(evento):
+    rival = html.escape(nombre_pais(evento["rival_id"]))
+    url = (
+        f"{EREPUBLIK_BASE_URL}/en/military/battlefield/"
+        f"{evento['battle_id']}"
+    )
+    tipo = "🚨" if evento["tipo"] == "alerta" else "✅"
+    problemas = ", ".join(evento["problemas"]) if evento["problemas"] else "OK"
+
+    return (
+        f"• {tipo} <a href=\"{url}\">{rival}</a> "
+        f"({html.escape(evento['objetivo'])}) - "
+        f"{html.escape(problemas)}"
+    )
+
+
+def dividir_texto_por_limite(texto, limite=3600):
+    if len(texto) <= limite:
+        return [texto]
+
+    bloques = []
+    actual = []
+    longitud_actual = 0
+
+    for linea in texto.splitlines():
+        incremento = len(linea) + (1 if actual else 0)
+        if actual and longitud_actual + incremento > limite:
+            bloques.append("\n".join(actual))
+            actual = [linea]
+            longitud_actual = len(linea)
+        else:
+            actual.append(linea)
+            longitud_actual += incremento
+
+    if actual:
+        bloques.append("\n".join(actual))
+
+    return bloques
+
+
+def formatear_bloques_eventos(monitor, eventos):
+    if not eventos:
+        return []
+
+    bloques = []
+    for tipo, titulo in (
+        ("alerta", "🚨 ALERTAS"),
+        ("recuperado", "✅ RECUPERACIONES"),
+    ):
+        filtrados = [evento for evento in eventos if evento["tipo"] == tipo]
+        if not filtrados:
+            continue
+
+        lineas = [
+            f"{titulo} - {html.escape(monitor['name'])}",
+            "",
+        ]
+        lineas.extend(
+            formatear_evento_alerta_resumen(evento)
+            for evento in filtrados
+        )
+
+        bloques.extend(dividir_texto_por_limite("\n".join(lineas)))
+
+    return bloques
+
+
+def parsear_timestamp_utc(valor):
+    if not valor:
+        return None
+
+    try:
+        fecha = datetime.fromisoformat(str(valor))
+    except ValueError:
+        return None
+
+    if fecha.tzinfo is None:
+        fecha = fecha.replace(tzinfo=timezone.utc)
+
+    return fecha.astimezone(timezone.utc)
+
+
+def monitor_debe_evaluarse(config, ahora=None):
+    if not config["enabled"]:
+        return False
+
+    ultimo_chequeo = parsear_timestamp_utc(config["last_check"])
+    if ultimo_chequeo is None:
+        return True
+
+    ahora = ahora or datetime.now(timezone.utc)
+    transcurrido = (ahora - ultimo_chequeo).total_seconds()
+    return transcurrido >= config["interval"]
+
+
 async def monitor_loop(application: Application):
     await asyncio.sleep(5)
 
@@ -955,33 +1247,84 @@ async def monitor_loop(application: Application):
         intervalo = DEFAULT_MONITOR_INTERVAL_SECONDS
 
         try:
-            config = await asyncio.to_thread(
-                obtener_config_monitor
+            monitores = await asyncio.to_thread(
+                obtener_monitores_activos
             )
-            intervalo = config["interval"]
 
-            if config["enabled"]:
-                resultado = await asyncio.to_thread(
-                    evaluar_monitor_sync
+            if not monitores:
+                await asyncio.sleep(intervalo)
+                continue
+
+            configs = []
+            for monitor in monitores:
+                configs.append(
+                    await asyncio.to_thread(
+                        obtener_config_monitor,
+                        monitor["id"],
+                    )
                 )
 
-                chat_id = resultado["config"]["chat_id"]
+            intervalo = min(
+                (
+                    config["interval"]
+                    for config in configs
+                    if config["enabled"]
+                ),
+                default=DEFAULT_MONITOR_INTERVAL_SECONDS,
+            )
 
-                if chat_id:
-                    for evento in resultado["events"]:
-                        try:
-                            await application.bot.send_message(
-                                chat_id=chat_id,
-                                text=formatear_evento_alerta(evento),
-                                parse_mode="HTML",
-                                disable_web_page_preview=True,
-                            )
-                        except Exception as send_error:
-                            print(
-                                "Error enviando alerta:",
-                                type(send_error).__name__,
-                                send_error,
-                            )
+            ahora = datetime.now(timezone.utc)
+
+            for config in configs:
+                if not monitor_debe_evaluarse(config, ahora):
+                    continue
+
+                monitor = config["monitor"]
+
+                try:
+                    resultado = await asyncio.to_thread(
+                        evaluar_monitor_sync,
+                        monitor["id"],
+                    )
+
+                    chat_id = resultado["config"]["chat_id"]
+                    if chat_id:
+                        bloques = formatear_bloques_eventos(
+                            monitor,
+                            resultado["events"],
+                        )
+
+                        for bloque in bloques:
+                            try:
+                                await application.bot.send_message(
+                                    chat_id=chat_id,
+                                    text=bloque,
+                                    parse_mode="HTML",
+                                    disable_web_page_preview=True,
+                                )
+                            except Exception as send_error:
+                                print(
+                                    "Error enviando alerta:",
+                                    type(send_error).__name__,
+                                    send_error,
+                                )
+
+                except Exception as exc:
+                    print(
+                        "Error evaluando monitor:",
+                        monitor["name"],
+                        type(exc).__name__,
+                        exc,
+                    )
+                    try:
+                        await asyncio.to_thread(
+                            guardar_setting,
+                            monitor["id"],
+                            "last_monitor_error",
+                            f"{type(exc).__name__}: {exc}",
+                        )
+                    except Exception:
+                        pass
 
         except asyncio.CancelledError:
             raise
@@ -1056,7 +1399,9 @@ async def orden(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
-        if not es_admin(update):
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
             await update.message.reply_text(
                 "⛔ Este comando está reservado a administradores."
             )
@@ -1088,7 +1433,7 @@ async def orden(
             )
             return
 
-        if country_id == MONITORED_COUNTRY_ID:
+        if country_id == monitor["erepublik_country_id"]:
             await update.message.reply_text(
                 "❌ No corresponde cargar una regla contra "
                 "el propio país monitoreado."
@@ -1096,6 +1441,7 @@ async def orden(
             return
 
         guardar_orden(
+            monitor["id"],
             country_id,
             regla,
             update.effective_user.id,
@@ -1118,7 +1464,9 @@ async def sinorden(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
-        if not es_admin(update):
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
             await update.message.reply_text(
                 "⛔ Este comando está reservado a administradores."
             )
@@ -1139,7 +1487,7 @@ async def sinorden(
             )
             return
 
-        if not desactivar_orden(country_id):
+        if not desactivar_orden(monitor["id"], country_id):
             await update.message.reply_text(
                 f"{nombre_pais(country_id)} "
                 "no tiene una orden activa."
@@ -1163,9 +1511,8 @@ async def ordenes(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
-        reglas = obtener_reglas_campania(
-            MONITORED_COUNTRY_ID
-        )
+        monitor = resolver_monitor_contexto(update)
+        reglas = obtener_reglas_campania(monitor["id"])
 
         if not reglas:
             await update.message.reply_text(
@@ -1175,6 +1522,7 @@ async def ordenes(
 
         lineas = [
             "📋 ÓRDENES ACTIVAS",
+            f"País: {monitor['name']}",
             "",
         ]
 
@@ -1206,12 +1554,15 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    monitor = obtener_monitor_actual()
+    monitor = resolver_monitor_contexto(update)
 
     await update.message.reply_text(
         "🌎 eRepublik Country Monitor\n\n"
-        f"País: {monitor['name']}\n\n"
+        f"País actual: {monitor['name']}\n"
+        f"Alias: /{monitor['telegram_command']}\n\n"
         "/batallas - Batallas activas\n"
+        "/pais <país> - Cambia el país de este chat\n"
+        "/paises - Lista países activos\n"
         "/ordenes - Órdenes actuales\n"
         "/monitor - Estado del monitor automático\n"
         "/alertas on|off - Activar/desactivar alertas\n"
@@ -1226,17 +1577,16 @@ async def estado(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
-        monitor = obtener_monitor_actual()
-        reglas = obtener_reglas_campania(
-            MONITORED_COUNTRY_ID
-        )
-        config = obtener_config_monitor()
+        monitor = resolver_monitor_contexto(update)
+        reglas = obtener_reglas_campania(monitor["id"])
+        config = obtener_config_monitor(monitor["id"])
 
         await update.message.reply_text(
             "✅ Bot funcionando\n\n"
             f"País monitoreado: "
             f"{monitor['name']} "
             f"({monitor['erepublik_country_id']})\n"
+            f"Alias: /{monitor['telegram_command']}\n"
             f"Órdenes activas: {len(reglas)}\n"
             "Persistencia: PostgreSQL ✅\n"
             f"Monitor automático: "
@@ -1256,16 +1606,19 @@ async def estado(
 async def mostrar_batallas(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
+    monitor_id=None,
 ):
     try:
-        monitor = obtener_monitor_actual()
-        reglas = obtener_reglas_campania(
-            MONITORED_COUNTRY_ID
+        monitor = (
+            obtener_monitor_por_id(monitor_id)
+            if monitor_id is not None
+            else resolver_monitor_contexto(update)
         )
+        reglas = obtener_reglas_campania(monitor["id"])
         data = consultar_campanas()
         batallas = buscar_batallas_pais(
             data,
-            MONITORED_COUNTRY_ID,
+            monitor["erepublik_country_id"],
         )
 
         if not batallas:
@@ -1346,12 +1699,14 @@ async def monitor_status(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
-        config = obtener_config_monitor()
+        monitor = resolver_monitor_contexto(update)
+        config = obtener_config_monitor(monitor["id"])
         last_check = config["last_check"] or "todavía sin revisión"
         last_error = config["last_error"] or "ninguno"
 
         await update.message.reply_text(
             "📡 MONITOR AUTOMÁTICO\n\n"
+            f"País: {monitor['name']}\n"
             f"Estado: {'ACTIVO ✅' if config['enabled'] else 'PAUSADO ⏸️'}\n"
             f"Intervalo: {config['interval']} segundos\n"
             f"Chat de alertas: {config['chat_id'] or 'sin configurar'}\n"
@@ -1372,7 +1727,9 @@ async def alertas(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
-        if not es_admin(update):
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
             await update.message.reply_text(
                 "⛔ Este comando está reservado a administradores."
             )
@@ -1384,7 +1741,6 @@ async def alertas(
             )
             return
 
-        monitor = obtener_monitor_actual()
         activar = context.args[0].lower() == "on"
 
         guardar_setting(
@@ -1418,7 +1774,9 @@ async def intervalo(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
-        if not es_admin(update):
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
             await update.message.reply_text(
                 "⛔ Este comando está reservado a administradores."
             )
@@ -1452,7 +1810,6 @@ async def intervalo(
             )
             return
 
-        monitor = obtener_monitor_actual()
         guardar_setting(
             monitor["id"],
             "monitor_interval_seconds",
@@ -1475,14 +1832,17 @@ async def chequear(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
-        if not es_admin(update):
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
             await update.message.reply_text(
                 "⛔ Este comando está reservado a administradores."
             )
             return
 
         resultado = await asyncio.to_thread(
-            evaluar_monitor_sync
+            evaluar_monitor_sync,
+            monitor["id"],
         )
 
         if not resultado["checked"]:
@@ -1493,15 +1853,19 @@ async def chequear(
 
         await update.message.reply_text(
             "✅ Revisión manual completada\n\n"
+            f"País: {monitor['name']}\n"
             f"Batallas con orden: "
             f"{resultado.get('relevant_battles', 0)}\n"
             f"Cambios detectados: "
             f"{len(resultado['events'])}"
         )
 
-        for evento in resultado["events"]:
+        for bloque in formatear_bloques_eventos(
+            monitor,
+            resultado["events"],
+        ):
             await update.message.reply_text(
-                formatear_evento_alerta(evento),
+                bloque,
                 parse_mode="HTML",
                 disable_web_page_preview=True,
             )
@@ -1509,6 +1873,102 @@ async def chequear(
     except Exception as exc:
         await update.message.reply_text(
             "❌ Error en /chequear\n\n"
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
+def formatear_lista_paises_activos():
+    monitores = obtener_monitores_activos()
+    if not monitores:
+        return "📭 No hay países activos configurados."
+
+    lineas = [
+        "🌎 PAÍSES ACTIVOS",
+        "",
+        "Usá /pais <país> para fijar el contexto de este chat.",
+        "",
+    ]
+
+    for monitor in monitores:
+        lineas.append(
+            f"• {monitor['name']} "
+            f"({monitor['erepublik_country_id']}) "
+            f"→ /{monitor['telegram_command']}"
+        )
+
+    return "\n".join(lineas)
+
+
+async def pais(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    try:
+        if not context.args:
+            monitor = resolver_monitor_contexto(update)
+            await update.message.reply_text(
+                "📌 País actual del chat\n\n"
+                f"{monitor['name']} "
+                f"({monitor['erepublik_country_id']})\n"
+                f"Alias: /{monitor['telegram_command']}\n\n"
+                "Usá /pais <país> para cambiarlo o /pais reset "
+                "para volver al país por defecto."
+            )
+            return
+
+        buscado = " ".join(context.args)
+
+        if buscado.strip().lower() in {"reset", "default", "base", "limpiar"}:
+            if update.effective_chat:
+                await asyncio.to_thread(
+                    borrar_preferencia_chat,
+                    update.effective_chat.id,
+                )
+            await update.message.reply_text(
+                "✅ Se volvió al país por defecto para este chat."
+            )
+            return
+
+        monitor = resolver_monitor_por_texto(buscado)
+
+        if monitor is None:
+            await update.message.reply_text(
+                f"❌ No encontré un país activo para: {buscado}"
+            )
+            return
+
+        if update.effective_chat:
+            await asyncio.to_thread(
+                guardar_preferencia_chat,
+                update.effective_chat.id,
+                monitor["id"],
+            )
+
+        await update.message.reply_text(
+            "✅ País seleccionado para este chat\n\n"
+            f"{monitor['name']} "
+            f"({monitor['erepublik_country_id']})\n"
+            f"Alias: /{monitor['telegram_command']}"
+        )
+
+    except Exception as exc:
+        await update.message.reply_text(
+            "❌ Error en /pais\n\n"
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
+async def paises(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    try:
+        await update.message.reply_text(
+            formatear_lista_paises_activos()
+        )
+    except Exception as exc:
+        await update.message.reply_text(
+            "❌ Error en /paises\n\n"
             f"{type(exc).__name__}: {exc}"
         )
 
@@ -1538,6 +1998,8 @@ def main():
         ("start", start),
         ("estado", estado),
         ("id", mostrar_id),
+        ("pais", pais),
+        ("paises", paises),
         ("orden", orden),
         ("sinorden", sinorden),
         ("ordenes", ordenes),
@@ -1554,16 +2016,24 @@ def main():
             CommandHandler(command, callback)
         )
 
-    alias = monitor["telegram_command"].strip().lower()
-
-    if (
-        alias
-        and alias not in {command for command, _ in handlers}
-        and re.fullmatch(r"[a-z0-9_]{1,32}", alias)
-    ):
-        app.add_handler(
-            CommandHandler(alias, mostrar_batallas)
-        )
+    registered = {command for command, _ in handlers}
+    for country in obtener_monitores_activos():
+        alias = country["telegram_command"].strip().lower()
+        if (
+            alias
+            and alias not in registered
+            and re.fullmatch(r"[a-z0-9_]{1,32}", alias)
+        ):
+            app.add_handler(
+                CommandHandler(
+                    alias,
+                    partial(
+                        mostrar_batallas,
+                        monitor_id=country["id"],
+                    ),
+                )
+            )
+            registered.add(alias)
 
     print(
         "eRepublik Country Monitor iniciado "

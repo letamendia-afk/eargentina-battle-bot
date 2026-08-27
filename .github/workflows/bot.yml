@@ -8,6 +8,8 @@ on:
     paths:
       - "bot.py"
       - "requirements.txt"
+      - "schema.sql"
+      - "tests/**"
       - ".github/workflows/bot.yml"
   schedule:
     - cron: "0 */5 * * *"
@@ -32,6 +34,9 @@ jobs:
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
+
+      - name: Ejecutar pruebas
+        run: python -m unittest discover -s tests
 
       - name: Ejecutar bot
         env:
