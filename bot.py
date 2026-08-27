@@ -1,6 +1,8 @@
 import os
+import re
 import html
 import requests
+import psycopg
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -24,18 +26,14 @@ DIVISIONES = {
     11: "A",
 }
 
+DB_TO_APP_RULE = {
+    "DEFENDER": "DEFENSOR",
+    "ATTACKER": "ATACANTE",
+}
 
-# ============================================================
-# ADMINISTRADORES
-# ============================================================
-#
-# Primero usaremos /id para obtener tu Telegram User ID.
-# Después lo agregaremos acá o, mejor aún, como variable
-# de entorno.
-# ============================================================
-
-ADMIN_TELEGRAM_IDS = {
-    361873857
+APP_TO_DB_RULE = {
+    "DEFENSOR": "DEFENDER",
+    "ATACANTE": "ATTACKER",
 }
 
 
@@ -120,11 +118,6 @@ PAISES = {
     28: "Venezuela",
 }
 
-MONITORED_COUNTRY_NAME = PAISES.get(
-    MONITORED_COUNTRY_ID,
-    f"País {MONITORED_COUNTRY_ID}"
-)
-
 
 # ============================================================
 # NORMALIZACIÓN DE NOMBRES
@@ -143,29 +136,207 @@ def buscar_country_id(nombre):
     buscado = normalizar_texto(nombre)
 
     for country_id, country_name in PAISES.items():
-
         if normalizar_texto(country_name) == buscado:
             return country_id
 
     return None
 
 
+def nombre_pais(country_id):
+    return PAISES.get(
+        int(country_id),
+        f"País {country_id}"
+    )
+
+
 # ============================================================
-# REGLAS DE CAMPAÑA
-# ============================================================
-#
-# Por ahora viven en memoria.
-#
-# Valores:
-# DEFENSOR
-# ATACANTE
-#
-# Chile queda precargado para conservar la regla actual.
+# POSTGRESQL
 # ============================================================
 
-REGLAS_CAMPANIA = {
-    64: "DEFENSOR",
-}
+def obtener_database_url():
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        raise ValueError(
+            "No se encontró DATABASE_URL"
+        )
+
+    return database_url.strip()
+
+
+def conectar_db():
+    return psycopg.connect(
+        obtener_database_url(),
+        connect_timeout=10
+    )
+
+
+def obtener_monitor_actual():
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    erepublik_country_id,
+                    name,
+                    telegram_command
+                FROM monitored_countries
+                WHERE erepublik_country_id = %s
+                  AND active = TRUE
+                LIMIT 1
+                """,
+                (MONITORED_COUNTRY_ID,)
+            )
+
+            row = cur.fetchone()
+
+    if row is None:
+        raise ValueError(
+            "El país monitoreado no existe o está inactivo "
+            "en monitored_countries"
+        )
+
+    return {
+        "id": int(row[0]),
+        "erepublik_country_id": int(row[1]),
+        "name": str(row[2]),
+        "telegram_command": str(row[3]),
+    }
+
+
+def es_admin(update: Update):
+    if not update.effective_user:
+        return False
+
+    user_id = int(update.effective_user.id)
+    monitor = obtener_monitor_actual()
+
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM country_admins
+                WHERE monitored_country_id = %s
+                  AND telegram_user_id = %s
+                  AND active = TRUE
+                LIMIT 1
+                """,
+                (
+                    monitor["id"],
+                    user_id,
+                )
+            )
+
+            return cur.fetchone() is not None
+
+
+def obtener_reglas_campania(country_id):
+    monitor = obtener_monitor_actual()
+
+    if monitor["erepublik_country_id"] != int(country_id):
+        raise ValueError(
+            "El país solicitado no coincide con el monitor activo"
+        )
+
+    reglas = {}
+
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    opponent_country_id,
+                    winner_side
+                FROM campaign_orders
+                WHERE monitored_country_id = %s
+                  AND active = TRUE
+                """,
+                (monitor["id"],)
+            )
+
+            for opponent_country_id, winner_side in cur.fetchall():
+                regla_app = DB_TO_APP_RULE.get(
+                    str(winner_side).upper()
+                )
+
+                if regla_app:
+                    reglas[int(opponent_country_id)] = regla_app
+
+    return reglas
+
+
+def guardar_orden(
+    opponent_country_id,
+    regla_app,
+    telegram_user_id
+):
+    monitor = obtener_monitor_actual()
+    winner_side = APP_TO_DB_RULE[regla_app]
+
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO campaign_orders (
+                    monitored_country_id,
+                    opponent_country_id,
+                    winner_side,
+                    active,
+                    created_by_telegram_id,
+                    updated_at
+                )
+                VALUES (
+                    %s,
+                    %s,
+                    %s,
+                    TRUE,
+                    %s,
+                    CURRENT_TIMESTAMP
+                )
+                ON CONFLICT (
+                    monitored_country_id,
+                    opponent_country_id
+                )
+                DO UPDATE SET
+                    winner_side = EXCLUDED.winner_side,
+                    active = TRUE,
+                    created_by_telegram_id =
+                        EXCLUDED.created_by_telegram_id,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    monitor["id"],
+                    int(opponent_country_id),
+                    winner_side,
+                    int(telegram_user_id),
+                )
+            )
+
+
+def desactivar_orden(opponent_country_id):
+    monitor = obtener_monitor_actual()
+
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE campaign_orders
+                SET
+                    active = FALSE,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE monitored_country_id = %s
+                  AND opponent_country_id = %s
+                  AND active = TRUE
+                """,
+                (
+                    monitor["id"],
+                    int(opponent_country_id),
+                )
+            )
+
+            return cur.rowcount > 0
 
 
 # ============================================================
@@ -242,9 +413,7 @@ def obtener_batallas(data):
     resultado = {}
 
     def recorrer(valor):
-
         if isinstance(valor, dict):
-
             for clave, contenido in valor.items():
 
                 if (
@@ -259,7 +428,6 @@ def obtener_batallas(data):
                         dict
                     )
                 ):
-
                     try:
                         resultado[int(clave)] = contenido
                     except ValueError:
@@ -268,7 +436,6 @@ def obtener_batallas(data):
                 recorrer(contenido)
 
         elif isinstance(valor, list):
-
             for item in valor:
                 recorrer(item)
 
@@ -280,17 +447,6 @@ def obtener_batallas(data):
 def buscar_batalla(data, battle_id):
     return obtener_batallas(data).get(
         int(battle_id)
-    )
-
-
-# ============================================================
-# NOMBRE DE PAÍS
-# ============================================================
-
-def nombre_pais(country_id):
-    return PAISES.get(
-        int(country_id),
-        f"País {country_id}"
     )
 
 
@@ -393,7 +549,6 @@ def formatear_porcentaje(valor):
     if abs(
         valor - round(valor)
     ) < 0.005:
-
         return str(
             int(round(valor))
         )
@@ -458,12 +613,10 @@ def buscar_batallas_pais(
             continue
 
         if invader_id == country_id:
-
             rival_id = defender_id
             rol = "atacante"
 
         else:
-
             rival_id = invader_id
             rol = "defensor"
 
@@ -526,7 +679,6 @@ def obtener_score_pais(item):
     )
 
     if invader_id == country_id:
-
         return (
             puntos_invader,
             puntos_defender
@@ -542,7 +694,10 @@ def obtener_score_pais(item):
 # OBJETIVO AUTOMÁTICO
 # ============================================================
 
-def obtener_objetivo_auto(item):
+def obtener_objetivo_auto(
+    item,
+    reglas_campania
+):
 
     rival_id = item[
         "rival_id"
@@ -552,7 +707,7 @@ def obtener_objetivo_auto(item):
         "country_id"
     ]
 
-    regla = REGLAS_CAMPANIA.get(
+    regla = reglas_campania.get(
         rival_id
     )
 
@@ -608,8 +763,7 @@ def pais_ganaria_division(
     ):
         return False
 
-    # Empate:
-    # gana el defensor.
+    # Empate: gana el defensor.
     return pais_es_defensor
 
 
@@ -636,18 +790,18 @@ def indicador_division(
     )
 
     if objetivo == "GANAR":
-
-        if pais_ganaria:
-            return "🟢"
-
-        return "🔴"
+        return (
+            "🟢"
+            if pais_ganaria
+            else "🔴"
+        )
 
     if objetivo == "PERDER":
-
-        if pais_ganaria:
-            return "🔴"
-
-        return "🟢"
+        return (
+            "🔴"
+            if pais_ganaria
+            else "🟢"
+        )
 
     return ""
 
@@ -669,8 +823,7 @@ def indicador_score(
         puntos_rival
     )
 
-    # Empate general:
-    # neutral.
+    # Empate general: neutral.
     if puntos_pais == puntos_rival:
         return ""
 
@@ -680,7 +833,6 @@ def indicador_score(
     )
 
     if objetivo == "GANAR":
-
         return (
             "🟢"
             if pais_gana
@@ -688,7 +840,6 @@ def indicador_score(
         )
 
     if objetivo == "PERDER":
-
         return (
             "🔴"
             if pais_gana
@@ -702,7 +853,10 @@ def indicador_score(
 # FORMATEAR BATALLA
 # ============================================================
 
-def formatear_batalla_pais(item):
+def formatear_batalla_pais(
+    item,
+    reglas_campania
+):
 
     battle_id = item[
         "battle_id"
@@ -735,13 +889,11 @@ def formatear_batalla_pais(item):
         == country_id
     )
 
-    # Rol
     if rol == "atacante":
         icono_rol = "⚔️"
     else:
         icono_rol = "🛡️"
 
-    # Link
     url = (
         f"{EREPUBLIK_BASE_URL}/"
         "en/military/battlefield/"
@@ -754,23 +906,19 @@ def formatear_batalla_pais(item):
         f'</a>'
     )
 
-    # Objetivo
     objetivo = obtener_objetivo_auto(
-        item
+        item,
+        reglas_campania
     )
 
     if objetivo is None:
-
         etiqueta_objetivo = ""
-
     else:
-
         etiqueta_objetivo = (
             f" | <b>[AUTO] "
             f"{objetivo}</b>"
         )
 
-    # Score
     puntos_pais, puntos_rival = (
         obtener_score_pais(
             item
@@ -792,19 +940,15 @@ def formatear_batalla_pais(item):
     )
 
     if color_score:
-
         texto_score = (
             f"{color_score} "
             f"T {score_pais}-{score_rival}"
         )
-
     else:
-
         texto_score = (
             f"T {score_pais}-{score_rival}"
         )
 
-    # Divisiones
     divisiones = obtener_divisiones(
         batalla
     )
@@ -826,11 +970,9 @@ def formatear_batalla_pais(item):
         )
 
         if datos is None:
-
             partes.append(
                 f"{nombre} --"
             )
-
             continue
 
         porcentaje_monitoreado = (
@@ -867,7 +1009,6 @@ def formatear_batalla_pais(item):
         )
 
         if color:
-
             texto_division = (
                 f"{color} "
                 f"{texto_division}"
@@ -884,21 +1025,6 @@ def formatear_batalla_pais(item):
         f"{texto_score}"
         f" | "
         + " | ".join(partes)
-    )
-
-
-# ============================================================
-# PERMISOS
-# ============================================================
-
-def es_admin(update: Update):
-
-    if not update.effective_user:
-        return False
-
-    return (
-        update.effective_user.id
-        in ADMIN_TELEGRAM_IDS
     )
 
 
@@ -939,73 +1065,69 @@ async def orden(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not es_admin(update):
+    try:
+        if not es_admin(update):
+            await update.message.reply_text(
+                "⛔ Este comando está reservado "
+                "a administradores."
+            )
+            return
 
-        await update.message.reply_text(
-            "⛔ Este comando está reservado "
-            "a administradores."
+        if len(context.args) < 2:
+            await update.message.reply_text(
+                "Uso:\n"
+                "/orden Chile defensor\n"
+                "/orden Chile atacante"
+            )
+            return
+
+        regla = context.args[-1].upper()
+
+        if regla not in APP_TO_DB_RULE:
+            await update.message.reply_text(
+                "La orden debe terminar en:\n"
+                "defensor o atacante"
+            )
+            return
+
+        nombre = " ".join(
+            context.args[:-1]
         )
 
-        return
-
-    if len(context.args) < 2:
-
-        await update.message.reply_text(
-            "Uso:\n"
-            "/orden Chile defensor\n"
-            "/orden Chile atacante"
+        country_id = buscar_country_id(
+            nombre
         )
 
-        return
+        if country_id is None:
+            await update.message.reply_text(
+                f"❌ No encontré el país: {nombre}"
+            )
+            return
 
-    regla = context.args[-1].upper()
+        if country_id == MONITORED_COUNTRY_ID:
+            await update.message.reply_text(
+                "❌ No corresponde cargar una "
+                "regla contra el propio país monitoreado."
+            )
+            return
 
-    if regla not in {
-        "DEFENSOR",
-        "ATACANTE"
-    }:
-
-        await update.message.reply_text(
-            "La orden debe terminar en:\n"
-            "defensor o atacante"
+        guardar_orden(
+            country_id,
+            regla,
+            update.effective_user.id
         )
 
-        return
-
-    nombre = " ".join(
-        context.args[:-1]
-    )
-
-    country_id = buscar_country_id(
-        nombre
-    )
-
-    if country_id is None:
-
         await update.message.reply_text(
-            f"❌ No encontré el país: {nombre}"
+            "✅ Orden persistente actualizada\n\n"
+            f"{nombre_pais(country_id)} → "
+            f"gana {regla}"
         )
 
-        return
-
-    if country_id == MONITORED_COUNTRY_ID:
-
+    except Exception as e:
         await update.message.reply_text(
-            "❌ No corresponde cargar una "
-            "regla contra el propio país monitoreado."
+            "❌ Error en /orden\n\n"
+            f"{type(e).__name__}: {e}"
         )
-
-        return
-
-    REGLAS_CAMPANIA[
-        country_id
-    ] = regla
-
-    await update.message.reply_text(
-        "✅ Orden actualizada\n\n"
-        f"{nombre_pais(country_id)} → "
-        f"gana {regla}"
-    )
 
 
 # ============================================================
@@ -1017,57 +1139,56 @@ async def sinorden(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not es_admin(update):
+    try:
+        if not es_admin(update):
+            await update.message.reply_text(
+                "⛔ Este comando está reservado "
+                "a administradores."
+            )
+            return
 
-        await update.message.reply_text(
-            "⛔ Este comando está reservado "
-            "a administradores."
+        if not context.args:
+            await update.message.reply_text(
+                "Uso:\n"
+                "/sinorden Chile"
+            )
+            return
+
+        nombre = " ".join(
+            context.args
         )
 
-        return
-
-    if not context.args:
-
-        await update.message.reply_text(
-            "Uso:\n"
-            "/sinorden Chile"
+        country_id = buscar_country_id(
+            nombre
         )
 
-        return
+        if country_id is None:
+            await update.message.reply_text(
+                f"❌ No encontré el país: {nombre}"
+            )
+            return
 
-    nombre = " ".join(
-        context.args
-    )
-
-    country_id = buscar_country_id(
-        nombre
-    )
-
-    if country_id is None:
-
-        await update.message.reply_text(
-            f"❌ No encontré el país: {nombre}"
+        eliminada = desactivar_orden(
+            country_id
         )
 
-        return
-
-    if country_id not in REGLAS_CAMPANIA:
+        if not eliminada:
+            await update.message.reply_text(
+                f"{nombre_pais(country_id)} "
+                "no tiene una orden activa."
+            )
+            return
 
         await update.message.reply_text(
-            f"{nombre_pais(country_id)} "
-            "no tiene una orden cargada."
+            "✅ Orden desactivada\n\n"
+            f"{nombre_pais(country_id)}"
         )
 
-        return
-
-    del REGLAS_CAMPANIA[
-        country_id
-    ]
-
-    await update.message.reply_text(
-        "✅ Orden eliminada\n\n"
-        f"{nombre_pais(country_id)}"
-    )
+    except Exception as e:
+        await update.message.reply_text(
+            "❌ Error en /sinorden\n\n"
+            f"{type(e).__name__}: {e}"
+        )
 
 
 # ============================================================
@@ -1079,41 +1200,47 @@ async def ordenes(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not REGLAS_CAMPANIA:
+    try:
+        reglas = obtener_reglas_campania(
+            MONITORED_COUNTRY_ID
+        )
+
+        if not reglas:
+            await update.message.reply_text(
+                "📋 No hay órdenes activas."
+            )
+            return
+
+        lineas = [
+            "📋 ÓRDENES ACTIVAS",
+            ""
+        ]
+
+        for country_id, regla in sorted(
+            reglas.items(),
+            key=lambda x: nombre_pais(
+                x[0]
+            )
+        ):
+            lineas.append(
+                f"• {nombre_pais(country_id)} "
+                f"→ {regla}"
+            )
+
+        lineas.extend([
+            "",
+            "💾 Guardadas en PostgreSQL."
+        ])
 
         await update.message.reply_text(
-            "📋 No hay órdenes cargadas."
+            "\n".join(lineas)
         )
 
-        return
-
-    lineas = [
-        "📋 ÓRDENES ACTIVAS",
-        ""
-    ]
-
-    for country_id, regla in sorted(
-        REGLAS_CAMPANIA.items(),
-        key=lambda x: nombre_pais(
-            x[0]
+    except Exception as e:
+        await update.message.reply_text(
+            "❌ Error en /ordenes\n\n"
+            f"{type(e).__name__}: {e}"
         )
-    ):
-
-        lineas.append(
-            f"• {nombre_pais(country_id)} "
-            f"→ {regla}"
-        )
-
-    lineas.extend([
-        "",
-        "⚠️ Las órdenes actuales viven "
-        "en memoria y todavía no sobreviven "
-        "a un reinicio del bot."
-    ])
-
-    await update.message.reply_text(
-        "\n".join(lineas)
-    )
 
 
 # ============================================================
@@ -1125,8 +1252,11 @@ async def start(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    monitor = obtener_monitor_actual()
+
     await update.message.reply_text(
         "🌎 eRepublik Country Monitor\n\n"
+        f"País: {monitor['name']}\n\n"
         "/batallas - Batallas activas\n"
         "/ordenes - Órdenes actuales\n"
         "/id - Ver IDs de Telegram\n"
@@ -1143,16 +1273,30 @@ async def estado(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    await update.message.reply_text(
-        "✅ Bot funcionando\n\n"
-        f"País monitoreado: "
-        f"{MONITORED_COUNTRY_NAME} "
-        f"({MONITORED_COUNTRY_ID})\n"
-        f"Órdenes cargadas: "
-        f"{len(REGLAS_CAMPANIA)}\n\n"
-        "Empate de división → defensor\n"
-        "Empate de score total → neutral"
-    )
+    try:
+        monitor = obtener_monitor_actual()
+
+        reglas = obtener_reglas_campania(
+            MONITORED_COUNTRY_ID
+        )
+
+        await update.message.reply_text(
+            "✅ Bot funcionando\n\n"
+            f"País monitoreado: "
+            f"{monitor['name']} "
+            f"({monitor['erepublik_country_id']})\n"
+            f"Órdenes activas: "
+            f"{len(reglas)}\n"
+            "Persistencia: PostgreSQL ✅\n\n"
+            "Empate de división → defensor\n"
+            "Empate de score total → neutral"
+        )
+
+    except Exception as e:
+        await update.message.reply_text(
+            "❌ Error en /estado\n\n"
+            f"{type(e).__name__}: {e}"
+        )
 
 
 # ============================================================
@@ -1165,6 +1309,11 @@ async def mostrar_batallas(
 ):
 
     try:
+        monitor = obtener_monitor_actual()
+
+        reglas = obtener_reglas_campania(
+            MONITORED_COUNTRY_ID
+        )
 
         data = consultar_campanas()
 
@@ -1174,22 +1323,23 @@ async def mostrar_batallas(
         )
 
         if not batallas:
-
             await update.message.reply_text(
-                f"{MONITORED_COUNTRY_NAME} "
+                f"{monitor['name']} "
                 "no tiene batallas activas."
             )
-
             return
 
         bloques = [
-            formatear_batalla_pais(item)
+            formatear_batalla_pais(
+                item,
+                reglas
+            )
             for item in batallas
         ]
 
         mensaje = (
             f"🌎 <b>BATALLAS DE "
-            f"{html.escape(MONITORED_COUNTRY_NAME.upper())}"
+            f"{html.escape(monitor['name'].upper())}"
             f"</b>\n"
             f"Activas: {len(batallas)}\n\n"
             + "\n\n".join(bloques)
@@ -1207,7 +1357,6 @@ async def mostrar_batallas(
         )
 
     except Exception as e:
-
         await update.message.reply_text(
             "❌ Error en /batallas\n\n"
             f"{type(e).__name__}: {e}"
@@ -1224,7 +1373,6 @@ async def test(
 ):
 
     try:
-
         data = consultar_campanas()
 
         batalla = buscar_batalla(
@@ -1233,7 +1381,6 @@ async def test(
         )
 
         if batalla is None:
-
             raise ValueError(
                 f"No encontré la batalla "
                 f"{BATTLE_ID_TEST}."
@@ -1265,7 +1412,6 @@ async def test(
         )
 
     except Exception as e:
-
         await update.message.reply_text(
             "❌ Error en /test\n\n"
             f"{type(e).__name__}: {e}"
@@ -1283,10 +1429,12 @@ def main():
     )
 
     if not token:
-
         raise ValueError(
             "No se encontró TELEGRAM_TOKEN"
         )
+
+    # Validación temprana de PostgreSQL y configuración.
+    monitor = obtener_monitor_actual()
 
     app = (
         Application
@@ -1353,15 +1501,31 @@ def main():
         )
     )
 
-    app.add_handler(
-        CommandHandler(
-            "argentina",
-            mostrar_batallas
-        )
+    alias = (
+        monitor["telegram_command"]
+        .strip()
+        .lower()
     )
 
+    if (
+        alias
+        and alias != "batallas"
+        and re.fullmatch(
+            r"[a-z0-9_]{1,32}",
+            alias
+        )
+    ):
+        app.add_handler(
+            CommandHandler(
+                alias,
+                mostrar_batallas
+            )
+        )
+
     print(
-        "eRepublik Country Monitor iniciado"
+        "eRepublik Country Monitor iniciado "
+        f"para {monitor['name']} "
+        f"({monitor['erepublik_country_id']})"
     )
 
     app.run_polling()
