@@ -19,7 +19,8 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 EREPUBLIK_BASE_URL = "https://www.erepublik.com"
 MONITORED_COUNTRY_ID = int(os.getenv("MONITORED_COUNTRY_ID", "27"))
 BATTLE_ID_TEST = 931103
-DEFAULT_MONITOR_INTERVAL_SECONDS = 60
+DEFAULT_MONITOR_INTERVAL_SECONDS = 300
+LEGACY_DEFAULT_MONITOR_INTERVAL_SECONDS = 60
 MIN_MONITOR_INTERVAL_SECONDS = 30
 MAX_MONITOR_INTERVAL_SECONDS = 3600
 
@@ -501,6 +502,39 @@ def obtener_config_monitor(monitor_id=None):
         "last_check": obtener_setting(monitor["id"], "last_monitor_check"),
         "last_error": obtener_setting(monitor["id"], "last_monitor_error"),
     }
+
+
+def normalizar_intervalo_monitor(monitor_id):
+    raw = obtener_setting(
+        monitor_id,
+        "monitor_interval_seconds",
+        None,
+    )
+
+    if raw is None:
+        guardar_setting(
+            monitor_id,
+            "monitor_interval_seconds",
+            DEFAULT_MONITOR_INTERVAL_SECONDS,
+        )
+        return
+
+    try:
+        actual = int(raw)
+    except (TypeError, ValueError):
+        guardar_setting(
+            monitor_id,
+            "monitor_interval_seconds",
+            DEFAULT_MONITOR_INTERVAL_SECONDS,
+        )
+        return
+
+    if actual == LEGACY_DEFAULT_MONITOR_INTERVAL_SECONDS:
+        guardar_setting(
+            monitor_id,
+            "monitor_interval_seconds",
+            DEFAULT_MONITOR_INTERVAL_SECONDS,
+        )
 
 
 def obtener_reglas_campania(monitor_id=None):
@@ -1353,6 +1387,11 @@ async def monitor_loop(application: Application):
 
 async def post_init(application: Application):
     await asyncio.to_thread(asegurar_esquema_monitor)
+    for monitor in await asyncio.to_thread(obtener_monitores_activos):
+        await asyncio.to_thread(
+            normalizar_intervalo_monitor,
+            monitor["id"],
+        )
     application.bot_data["monitor_task"] = asyncio.create_task(
         monitor_loop(application)
     )

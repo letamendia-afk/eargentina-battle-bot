@@ -58,7 +58,7 @@ Tablas principales:
 
 ## Monitor automático
 
-Por defecto revisa cada 60 segundos. Solo evalúa campañas que tengan una orden activa.
+Por defecto revisa cada 5 minutos. Solo evalúa campañas que tengan una orden activa.
 
 El monitor lee todos los países activos configurados en `monitored_countries` y respeta el intervalo y el chat de alertas de cada uno. Si en un chat querés trabajar con otro país, usá `/pais <país>` para fijar el contexto de ese chat.
 
