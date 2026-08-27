@@ -2,7 +2,7 @@ import sys
 import types
 import unittest
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 telegram = types.ModuleType("telegram")
 telegram.Update = type("Update", (), {})
@@ -126,6 +126,32 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(len(bloques), 2)
         self.assertIn("🚨 ALERTAS - Argentina", bloques[0])
         self.assertIn("✅ RECUPERACIONES - Argentina", bloques[1])
+
+
+class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
+    async def test_paises_with_argument_sets_chat_country(self):
+        fake_monitor = {
+            "id": 7,
+            "erepublik_country_id": 27,
+            "name": "Argentina",
+            "telegram_command": "argentina",
+        }
+
+        update = types.SimpleNamespace(
+            effective_chat=types.SimpleNamespace(id=123),
+            message=types.SimpleNamespace(reply_text=AsyncMock()),
+        )
+        context = types.SimpleNamespace(args=["Argentina"])
+
+        with patch.object(bot, "resolver_monitor_por_texto", return_value=fake_monitor), patch.object(
+            bot,
+            "guardar_preferencia_chat",
+            return_value=None,
+        ) as guardar_preferencia_chat:
+            await bot.paises(update, context)
+
+        guardar_preferencia_chat.assert_called_once_with(123, 7)
+        update.message.reply_text.assert_awaited_once()
 
 
 if __name__ == "__main__":

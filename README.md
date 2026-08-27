@@ -19,7 +19,7 @@ El proyecto nació para Argentina, pero la lógica y la base están preparadas p
 
 - `/batallas` — lista batallas activas.
 - `/pais <país>` — fija el país monitoreado para este chat. `/pais reset` vuelve al país por defecto.
-- `/paises` — lista los países activos configurados en la base.
+- `/paises` — lista los países activos configurados en la base. Con argumento, también fija el país del chat.
 - `/<alias_pais>` — alias configurado en `monitored_countries.telegram_command`.
 - `/orden <pais> defensor|atacante` — crea o actualiza una orden. Solo administradores.
 - `/sinorden <pais>` — desactiva una orden. Solo administradores.

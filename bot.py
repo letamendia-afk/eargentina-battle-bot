@@ -1963,6 +1963,31 @@ async def paises(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     try:
+        if context.args:
+            buscado = " ".join(context.args)
+            monitor = resolver_monitor_por_texto(buscado)
+
+            if monitor is None:
+                await update.message.reply_text(
+                    f"❌ No encontré un país activo para: {buscado}"
+                )
+                return
+
+            if update.effective_chat:
+                await asyncio.to_thread(
+                    guardar_preferencia_chat,
+                    update.effective_chat.id,
+                    monitor["id"],
+                )
+
+            await update.message.reply_text(
+                "✅ País seleccionado para este chat\n\n"
+                f"{monitor['name']} "
+                f"({monitor['erepublik_country_id']})\n"
+                f"Alias: /{monitor['telegram_command']}"
+            )
+            return
+
         await update.message.reply_text(
             formatear_lista_paises_activos()
         )
