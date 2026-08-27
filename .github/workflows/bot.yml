@@ -2,10 +2,17 @@ name: eArgentina Battle Bot
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 */5 * * *"
+
+concurrency:
+  group: eargentina-country-monitor
+  cancel-in-progress: true
 
 jobs:
   bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
 
     steps:
       - name: Descargar código
