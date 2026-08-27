@@ -23,4 +23,5 @@ jobs:
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           EREPUBLIK_COOKIE: ${{ secrets.EREPUBLIK_COOKIE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python bot.py
