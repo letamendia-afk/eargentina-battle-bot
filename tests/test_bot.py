@@ -105,6 +105,18 @@ class BotHelpersTest(unittest.TestCase):
             self.assertEqual(bot.resolver_monitor_por_texto("Argentina"), fake_monitor)
             self.assertEqual(bot.resolver_monitor_por_texto("argentina"), fake_monitor)
 
+    def test_resolver_pais_orden_accepts_name_and_known_id(self):
+        self.assertEqual(bot.resolver_pais_orden("Chile"), 64)
+        self.assertEqual(bot.resolver_pais_orden("64"), 64)
+        self.assertIsNone(bot.resolver_pais_orden("999999"))
+
+    def test_normalizar_regla_orden_accepts_common_variants(self):
+        self.assertEqual(bot.normalizar_regla_orden("defensor"), "DEFENSOR")
+        self.assertEqual(bot.normalizar_regla_orden("def"), "DEFENSOR")
+        self.assertEqual(bot.normalizar_regla_orden("attacker"), "ATACANTE")
+        self.assertEqual(bot.normalizar_regla_orden("ataque"), "ATACANTE")
+        self.assertIsNone(bot.normalizar_regla_orden("neutral"))
+
     def test_formatear_bloques_eventos_groups_by_type(self):
         monitor = {"name": "Argentina"}
         eventos = [

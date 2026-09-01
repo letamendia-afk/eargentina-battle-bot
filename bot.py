@@ -40,6 +40,16 @@ APP_TO_DB_RULE = {
     "ATACANTE": "ATTACKER",
 }
 
+REGLAS_ORDEN = {
+    "DEFENSOR": "DEFENSOR",
+    "DEFENDER": "DEFENSOR",
+    "DEF": "DEFENSOR",
+    "ATACANTE": "ATACANTE",
+    "ATTACKER": "ATACANTE",
+    "ATAQUE": "ATACANTE",
+    "ATTACK": "ATACANTE",
+}
+
 
 # ============================================================
 # PAÍSES
@@ -220,6 +230,22 @@ def obtener_monitor_por_alias(alias):
                     return monitor
 
     return None
+
+
+def resolver_pais_orden(texto):
+    """Resuelve un rival por nombre o por ID de eRepublik."""
+    texto_limpio = str(texto).strip()
+    if texto_limpio.isdigit():
+        country_id = int(texto_limpio)
+        return country_id if country_id in PAISES else None
+    return buscar_country_id(texto_limpio)
+
+
+def normalizar_regla_orden(texto):
+    """Acepta las formas más comunes y devuelve el nombre de la app."""
+    if texto is None:
+        return None
+    return REGLAS_ORDEN.get(normalizar_texto(texto).upper())
 
 
 def obtener_monitor_predeterminado():
@@ -1466,17 +1492,18 @@ async def orden(
             )
             return
 
-        regla = context.args[-1].upper()
+        regla = normalizar_regla_orden(context.args[-1])
 
-        if regla not in APP_TO_DB_RULE:
+        if regla is None:
             await update.message.reply_text(
                 "La orden debe terminar en:\n"
-                "defensor o atacante"
+                "defensor o atacante\n\n"
+                "También podés usar: def, defender, ataque o attacker."
             )
             return
 
         nombre = " ".join(context.args[:-1])
-        country_id = buscar_country_id(nombre)
+        country_id = resolver_pais_orden(nombre)
 
         if country_id is None:
             await update.message.reply_text(
@@ -1530,7 +1557,7 @@ async def sinorden(
             return
 
         nombre = " ".join(context.args)
-        country_id = buscar_country_id(nombre)
+        country_id = resolver_pais_orden(nombre)
 
         if country_id is None:
             await update.message.reply_text(

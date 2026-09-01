@@ -21,9 +21,11 @@ El proyecto nació para Argentina, pero la lógica y la base están preparadas p
 - `/pais <país>` — fija el país monitoreado para este chat. `/pais reset` vuelve al país por defecto.
 - `/paises` — lista los países activos configurados en la base. Con argumento, también fija el país del chat.
 - `/<alias_pais>` — alias configurado en `monitored_countries.telegram_command`.
-- `/orden <pais> defensor|atacante` — crea o actualiza una orden. Solo administradores.
-- `/sinorden <pais>` — desactiva una orden. Solo administradores.
+- `/orden <pais o ID> defensor|atacante` — crea o actualiza una orden persistente. Solo administradores.
+- `/sinorden <pais o ID>` — desactiva una orden. Solo administradores.
 - `/ordenes` — lista órdenes activas.
+
+Las órdenes quedan guardadas por rival en PostgreSQL. Por ejemplo, `/orden 64 defensor` mantiene como objetivo que el defensor gane cada vez que aparezca ese rival, hasta usar `/sinorden 64` o reemplazarla con otra orden.
 - `/monitor` — muestra estado del monitor automático.
 - `/alertas on|off` — activa o pausa alertas y, al activar, usa el chat actual como destino. Solo administradores.
 - `/intervalo <segundos>` — cambia el intervalo de revisión (de 30 segundos a 1 hora). Solo administradores.
@@ -71,3 +73,15 @@ El workflow se puede iniciar manualmente y también se relanza de forma programa
 ## Portabilidad
 
 Supabase se usa actualmente como PostgreSQL administrado. La lógica del bot no depende de la API específica de Supabase; se conecta mediante `psycopg` y una URI PostgreSQL estándar.
+
+## Despliegue permanente
+
+Si querés dejar el bot corriendo de forma continua sin depender de GitHub Actions como runtime, el camino recomendado es Oracle Cloud Always Free.
+
+La guía corta está en [`deploy/oci/README.md`](deploy/oci/README.md). Ahí quedan separados:
+
+- el servicio `systemd` para arrancar el bot al prender la VM;
+- el archivo de variables de entorno con los secretos ya conocidos;
+- y los pasos mínimos para instalarlo en una instancia Linux chica.
+
+GitHub Actions puede quedarse como integración continua, pero la ejecución permanente conviene moverla a la VM de Oracle.

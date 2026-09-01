@@ -1,0 +1,22 @@
+[Unit]
+Description=eArgentina Battle Tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eargentina
+Group=eargentina
+WorkingDirectory=/opt/eargentina-battle-bot
+EnvironmentFile=/etc/eargentina-battle-bot.env
+ExecStart=/opt/eargentina-battle-bot/.venv/bin/python /opt/eargentina-battle-bot/bot.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/eargentina-battle-bot
+
+[Install]
+WantedBy=multi-user.target
