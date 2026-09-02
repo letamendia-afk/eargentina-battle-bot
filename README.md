@@ -17,6 +17,8 @@ El proyecto nació para Argentina, pero la lógica y la base están preparadas p
 
 ## Comandos
 
+La guía para usuarios comunes está en [`docs/GUIA_USUARIOS.md`](docs/GUIA_USUARIOS.md).
+
 - `/batallas` — lista batallas activas.
 - `/pais <país>` — fija el país monitoreado para este chat. `/pais reset` vuelve al país por defecto.
 - `/paises` — lista los países activos configurados en la base. Con argumento, también fija el país del chat.
