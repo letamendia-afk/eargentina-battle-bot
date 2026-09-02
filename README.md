@@ -64,7 +64,7 @@ Tablas principales:
 
 ## Monitor automático
 
-Por defecto revisa cada 5 minutos. Solo evalúa campañas que tengan una orden activa.
+Por defecto revisa cada 5 minutos. El reporte periódico se envía al chat configurado y muestra las batallas activas. Las alertas especiales se emiten únicamente para campañas con una orden activa, cuando el lado equivocado cruza los umbrales de 50, 100 o 130 puntos en el tanteador general.
 
 El monitor lee todos los países activos configurados en `monitored_countries` y respeta el intervalo y el chat de alertas de cada uno. Si en un chat querés trabajar con otro país, usá `/pais <país>` para fijar el contexto de ese chat.
 

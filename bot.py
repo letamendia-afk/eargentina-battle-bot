@@ -1127,26 +1127,18 @@ def evaluar_batalla_para_alerta(item, reglas_campania):
     if objetivo is None:
         return None
 
-    # Las alertas se basan en el resultado general; las divisiones solo
-    # detallan el problema cuando el tanteador general ya está equivocado.
-    if visual["indicador_score"] != "🔴":
-        return None
-
     problemas = []
-    problemas.append("T")
+    umbral_score = None
 
-    umbral_score = obtener_umbral_score_general(
-        visual["puntos_pais"],
-        visual["puntos_rival"],
-        objetivo,
-    )
-    if umbral_score is not None:
-        problemas.append(f"T≥{umbral_score}")
-
-    for division_id in (3, 4, 11):
-        detalle = visual["divisiones"].get(division_id)
-        if detalle and detalle["indicador"] == "🔴":
-            problemas.append(DIVISIONES[division_id])
+    if visual["indicador_score"] == "🔴":
+        problemas.append("T")
+        umbral_score = obtener_umbral_score_general(
+            visual["puntos_pais"],
+            visual["puntos_rival"],
+            objetivo,
+        )
+        if umbral_score is not None:
+            problemas.append(f"T≥{umbral_score}")
 
     partes = [
         f"T {formatear_score(visual['puntos_pais'])}-"
@@ -1205,28 +1197,29 @@ def procesar_estados_alerta(monitor_id, evaluaciones):
 
             for ev in evaluaciones:
                 battle_id = int(ev["battle_id"])
-                actual_problem = bool(ev["problemas"])
                 previo = previos.get(battle_id)
 
                 debe_notificar = False
                 tipo = None
 
-                if previo is None:
-                    if actual_problem:
-                        debe_notificar = True
-                        tipo = (
-                            "critica"
-                            if ev.get("criticidad") == "critica"
-                            else "alerta"
-                        )
-                elif previo["signature"] != ev["signature"]:
+                umbral_anterior = max(
+                    (
+                        int(valor)
+                        for valor in re.findall(r"T≥(\d+)", previo["signature"])
+                    ),
+                    default=0,
+                ) if previo else 0
+                umbral_actual = int(ev.get("umbral_score") or 0)
+
+                if umbral_actual > umbral_anterior:
                     debe_notificar = True
-                    if not actual_problem:
-                        tipo = "recuperado"
-                    elif ev.get("criticidad") == "critica":
-                        tipo = "critica"
-                    else:
-                        tipo = "alerta"
+                    tipo = (
+                        "critica"
+                        if ev.get("criticidad") == "critica"
+                        else "alerta"
+                    )
+
+                actual_problem = bool(ev["problemas"])
 
                 if debe_notificar:
                     eventos.append({
@@ -1270,6 +1263,26 @@ def procesar_estados_alerta(monitor_id, evaluaciones):
     return eventos
 
 
+def formatear_reporte_monitor(monitor, batallas, reglas_campania):
+    """Construye el reporte periódico, incluso cuando no hay alertas."""
+    encabezado = [
+        f"📡 <b>CHEQUEO AUTOMÁTICO — {html.escape(monitor['name'])}</b>",
+        f"Batallas con orden: {len(batallas)}",
+    ]
+
+    if not batallas:
+        encabezado.append("No hay batallas activas con una orden cargada.")
+        return "\n".join(encabezado)
+
+    return "\n\n".join(
+        encabezado
+        + [
+            formatear_batalla_pais(item, reglas_campania)
+            for item in batallas
+        ]
+    )
+
+
 def evaluar_monitor_sync(monitor_id=None):
     config = obtener_config_monitor(monitor_id)
     monitor = config["monitor"]
@@ -1288,12 +1301,14 @@ def evaluar_monitor_sync(monitor_id=None):
         data,
         monitor["erepublik_country_id"],
     )
+    batallas_con_orden = [
+        item
+        for item in batallas
+        if item["rival_id"] in reglas
+    ]
 
     evaluaciones = []
-    for item in batallas:
-        if item["rival_id"] not in reglas:
-            continue
-
+    for item in batallas_con_orden:
         evaluacion = evaluar_batalla_para_alerta(
             item,
             reglas,
@@ -1320,6 +1335,8 @@ def evaluar_monitor_sync(monitor_id=None):
     return {
         "config": config,
         "events": eventos,
+        "battles": batallas,
+        "rules": reglas,
         "checked": True,
         "relevant_battles": len(evaluaciones),
     }
@@ -1517,6 +1534,25 @@ async def monitor_loop(application: Application):
 
                     chat_id = resultado["config"]["chat_id"]
                     if chat_id:
+                        reporte = formatear_reporte_monitor(
+                            monitor,
+                            resultado["battles"],
+                            resultado["rules"],
+                        )
+                        try:
+                            await application.bot.send_message(
+                                chat_id=chat_id,
+                                text=reporte,
+                                parse_mode="HTML",
+                                disable_web_page_preview=True,
+                            )
+                        except Exception as send_error:
+                            print(
+                                "Error enviando chequeo:",
+                                type(send_error).__name__,
+                                send_error,
+                            )
+
                         bloques = formatear_bloques_eventos(
                             monitor,
                             resultado["events"],
@@ -2094,7 +2130,8 @@ async def monitor_status(
             f"Chat de alertas: {config['chat_id'] or 'sin configurar'}\n"
             f"Última revisión: {last_check}\n"
             f"Último error: {last_error}\n\n"
-            "Solo alerta sobre campañas con una orden activa."
+            "El chequeo periódico se envía al chat configurado y "
+            "solo incluye campañas con una orden activa."
         )
 
     except Exception as exc:

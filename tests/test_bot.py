@@ -146,10 +146,19 @@ class BotHelpersTest(unittest.TestCase):
             "puntos_pais": 70,
             "puntos_rival": 30,
             "indicador_score": "",
-            "divisiones": {3: {"indicador": "🔴"}},
+            "divisiones": {
+                3: {
+                    "pais": 40,
+                    "rival": 60,
+                    "indicador": "🔴",
+                }
+            },
         }
         with patch.object(bot, "datos_visuales_batalla", return_value=visual):
-            self.assertIsNone(bot.evaluar_batalla_para_alerta(item, {}))
+            evaluacion = bot.evaluar_batalla_para_alerta(item, {})
+
+        self.assertEqual(evaluacion["signature"], "OK")
+        self.assertEqual(evaluacion["problemas"], [])
 
     def test_formatear_bloques_eventos_groups_by_type(self):
         monitor = {"name": "Argentina"}
@@ -220,6 +229,7 @@ class BotHelpersTest(unittest.TestCase):
                         "objetivo": "GANAR",
                         "problemas": ["T"],
                         "signature": "T",
+                        "umbral_score": None,
                         "resumen": "T 1-0",
                     }
                 ],
@@ -270,14 +280,13 @@ class BotHelpersTest(unittest.TestCase):
                         "objetivo": "GANAR",
                         "problemas": [],
                         "signature": "OK",
+                        "umbral_score": None,
                         "resumen": "T 1-0",
                     }
                 ],
             )
 
-        self.assertEqual(len(eventos), 1)
-        self.assertEqual(eventos[0]["tipo"], "recuperado")
-        self.assertEqual(eventos[0]["signature"], "OK")
+        self.assertEqual(eventos, [])
 
 
 class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
