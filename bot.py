@@ -1548,6 +1548,40 @@ async def post_shutdown(application: Application):
 # COMANDOS
 # ============================================================
 
+AYUDA_USUARIOS = (
+    "🌎 <b>AYUDA — eRepublik Battle Tracker</b>\n\n"
+    "El bot muestra batallas activas y aplica las órdenes guardadas "
+    "por los administradores. Las órdenes aparecen como [AUTO] y "
+    "se conservan entre reinicios.\n\n"
+    "<b>Comandos para usuarios</b>\n"
+    "/paises — Lista los países disponibles.\n"
+    "/pais — Muestra el país seleccionado.\n"
+    "/pais &lt;país&gt; — Cambia el país del chat.\n"
+    "/pais reset — Vuelve al país predeterminado.\n"
+    "/ordenes — Muestra las órdenes activas.\n"
+    "/batallas — Muestra las batallas y los objetivos [AUTO].\n"
+    "/monitor — Muestra el estado de las alertas automáticas.\n"
+    "/estado — Muestra el estado general del bot.\n"
+    "/id — Muestra el ID de Telegram del usuario y del chat.\n"
+    "/test — Prueba la conexión con eRepublik.\n\n"
+    "<b>Cómo leer [AUTO]</b>\n"
+    "[AUTO] GANAR o [AUTO] PERDER indica el objetivo calculado "
+    "para Argentina. Solo aparece 🔴 cuando el tanteador general "
+    "está fuera del objetivo.\n\n"
+    "Las alertas automáticas solo se envían para batallas con una "
+    "orden activa."
+)
+
+
+async def help_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    await update.message.reply_text(
+        AYUDA_USUARIOS,
+        parse_mode="HTML",
+    )
+
 async def mostrar_id(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -2197,6 +2231,7 @@ def main():
     )
 
     handlers = [
+        ("help", help_command),
         ("start", start),
         ("estado", estado),
         ("id", mostrar_id),

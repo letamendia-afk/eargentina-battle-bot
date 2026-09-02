@@ -281,6 +281,20 @@ class BotHelpersTest(unittest.TestCase):
 
 
 class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
+    async def test_help_muestra_solo_comandos_publicos(self):
+        update = types.SimpleNamespace(
+            message=types.SimpleNamespace(reply_text=AsyncMock()),
+        )
+
+        await bot.help_command(update, types.SimpleNamespace())
+
+        mensaje = update.message.reply_text.await_args.args[0]
+        self.assertIn("/ordenes", mensaje)
+        self.assertIn("/batallas", mensaje)
+        self.assertNotIn("/orden ", mensaje)
+        self.assertNotIn("/sinorden", mensaje)
+        self.assertNotIn("/alertas", mensaje)
+
     async def test_paises_with_argument_sets_chat_country(self):
         fake_monitor = {
             "id": 7,
