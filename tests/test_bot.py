@@ -295,6 +295,23 @@ class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("/sinorden", mensaje)
         self.assertNotIn("/alertas", mensaje)
 
+    async def test_autorizar_guarda_usuario_para_el_pais_actual(self):
+        update = types.SimpleNamespace(
+            effective_user=types.SimpleNamespace(id=10),
+            effective_chat=types.SimpleNamespace(id=123),
+            message=types.SimpleNamespace(reply_text=AsyncMock()),
+        )
+        context = types.SimpleNamespace(args=["456", "@nuevo_usuario"])
+        monitor = {"id": 7, "name": "Argentina"}
+
+        with patch.object(bot, "resolver_monitor_contexto", return_value=monitor), patch.object(
+            bot, "es_admin", return_value=True
+        ), patch.object(bot, "guardar_admin") as guardar:
+            await bot.autorizar(update, context)
+
+        guardar.assert_called_once_with(7, 456, "@nuevo_usuario")
+        update.message.reply_text.assert_awaited_once()
+
     async def test_paises_with_argument_sets_chat_country(self):
         fake_monitor = {
             "id": 7,

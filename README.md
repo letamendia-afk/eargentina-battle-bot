@@ -34,6 +34,8 @@ Las órdenes quedan guardadas por rival en PostgreSQL. Por ejemplo, `/orden 64 d
 - `/chequear` — fuerza una revisión manual. Solo administradores.
 - `/estado` — estado general del bot.
 - `/id` — muestra User ID y Chat ID de Telegram.
+- `/autorizar <User ID> [@usuario]` — habilita a un usuario específico como administrador del país actual. Solo administradores.
+- `/desautorizar <User ID>` — quita ese permiso. Solo administradores.
 - `/test` — batalla de control histórica si sigue disponible en campañas activas.
 
 ## Variables de entorno / GitHub Secrets

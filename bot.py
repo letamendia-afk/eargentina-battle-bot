@@ -456,6 +456,63 @@ def obtener_admin_chat_default(monitor_id):
     return int(row[0]) if row else None
 
 
+def guardar_admin(monitor_id, telegram_user_id, telegram_username=None):
+    """Activa o crea un administrador para el país indicado."""
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO country_admins (
+                    monitored_country_id,
+                    telegram_user_id,
+                    telegram_username,
+                    active
+                )
+                VALUES (%s, %s, %s, TRUE)
+                ON CONFLICT (monitored_country_id, telegram_user_id)
+                DO UPDATE SET
+                    telegram_username = EXCLUDED.telegram_username,
+                    active = TRUE
+                """,
+                (
+                    int(monitor_id),
+                    int(telegram_user_id),
+                    telegram_username,
+                ),
+            )
+
+
+def quitar_admin(monitor_id, telegram_user_id):
+    """Desactiva un administrador sin dejar el país sin administradores."""
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                FROM country_admins
+                WHERE monitored_country_id = %s
+                  AND active = TRUE
+                """,
+                (int(monitor_id),),
+            )
+            cantidad_admins = int(cur.fetchone()[0])
+
+            if cantidad_admins <= 1:
+                return False
+
+            cur.execute(
+                """
+                UPDATE country_admins
+                SET active = FALSE
+                WHERE monitored_country_id = %s
+                  AND telegram_user_id = %s
+                  AND active = TRUE
+                """,
+                (int(monitor_id), int(telegram_user_id)),
+            )
+            return cur.rowcount > 0
+
+
 def obtener_setting(monitor_id, key, default=None):
     with conectar_db() as conn:
         with conn.cursor() as cur:
@@ -1582,6 +1639,90 @@ async def help_command(
         parse_mode="HTML",
     )
 
+
+async def autorizar(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    try:
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
+            await update.message.reply_text(
+                "⛔ Este comando está reservado a administradores."
+            )
+            return
+
+        if not context.args or not context.args[0].isdigit():
+            await update.message.reply_text(
+                "Uso:\n/autorizar <User ID> [@usuario]\n\n"
+                "El User ID se obtiene con /id."
+            )
+            return
+
+        telegram_user_id = int(context.args[0])
+        telegram_username = context.args[1] if len(context.args) > 1 else None
+
+        guardar_admin(
+            monitor["id"],
+            telegram_user_id,
+            telegram_username,
+        )
+
+        await update.message.reply_text(
+            "✅ Usuario autorizado para administrar órdenes\n\n"
+            f"País: {monitor['name']}\n"
+            f"User ID: {telegram_user_id}"
+        )
+
+    except Exception as exc:
+        await update.message.reply_text(
+            "❌ Error en /autorizar\n\n"
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
+async def desautorizar(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    try:
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
+            await update.message.reply_text(
+                "⛔ Este comando está reservado a administradores."
+            )
+            return
+
+        if not context.args or not context.args[0].isdigit():
+            await update.message.reply_text(
+                "Uso:\n/desautorizar <User ID>"
+            )
+            return
+
+        telegram_user_id = int(context.args[0])
+        quitado = quitar_admin(monitor["id"], telegram_user_id)
+
+        if not quitado:
+            await update.message.reply_text(
+                "⚠️ No se quitó el permiso. Puede que el usuario no "
+                "sea administrador o que sea el último administrador activo."
+            )
+            return
+
+        await update.message.reply_text(
+            "✅ Permiso de administrador quitado\n\n"
+            f"País: {monitor['name']}\n"
+            f"User ID: {telegram_user_id}"
+        )
+
+    except Exception as exc:
+        await update.message.reply_text(
+            "❌ Error en /desautorizar\n\n"
+            f"{type(exc).__name__}: {exc}"
+        )
+
 async def mostrar_id(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -2232,6 +2373,8 @@ def main():
 
     handlers = [
         ("help", help_command),
+        ("autorizar", autorizar),
+        ("desautorizar", desautorizar),
         ("start", start),
         ("estado", estado),
         ("id", mostrar_id),
