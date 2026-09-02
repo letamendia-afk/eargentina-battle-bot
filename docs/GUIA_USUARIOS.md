@@ -145,4 +145,5 @@ Consulta una batalla de control histórica para verificar que el bot pueda comun
 - Una batalla sin orden activa se muestra sin objetivo automático.
 - `[AUTO] GANAR` o `[AUTO] PERDER` representa el objetivo calculado para el país monitoreado.
 - Los círculos verdes no se muestran cuando la situación es correcta; solo aparece 🔴 cuando el tanteador o una división contradice el objetivo.
+- Si el lado que contradice la orden alcanza 50 puntos en el tanteador general, el bot envía una alerta crítica. Al llegar a 150 puntos, la batalla se considera ganada.
 - Si cambió un acuerdo político o militar, avisale a un administrador para que actualice la orden.

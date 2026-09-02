@@ -23,6 +23,8 @@ DEFAULT_MONITOR_INTERVAL_SECONDS = 300
 LEGACY_DEFAULT_MONITOR_INTERVAL_SECONDS = 60
 MIN_MONITOR_INTERVAL_SECONDS = 30
 MAX_MONITOR_INTERVAL_SECONDS = 3600
+GENERAL_SCORE_ALERT_THRESHOLD = 50
+BATTLE_WINNING_SCORE = 150
 
 DIVISIONES = {
     3: "D3",
@@ -918,6 +920,26 @@ def indicador_score(puntos_pais, puntos_rival, objetivo):
     return ""
 
 
+def alerta_score_general_alcanzada(
+    puntos_pais,
+    puntos_rival,
+    objetivo,
+    umbral=GENERAL_SCORE_ALERT_THRESHOLD,
+):
+    """Indica si el lado que contradice la orden alcanzó el umbral."""
+    puntos_pais = float(puntos_pais)
+    puntos_rival = float(puntos_rival)
+    umbral = float(umbral)
+
+    if objetivo == "GANAR" and puntos_pais < puntos_rival:
+        return puntos_rival >= umbral
+
+    if objetivo == "PERDER" and puntos_pais > puntos_rival:
+        return puntos_pais >= umbral
+
+    return False
+
+
 # ============================================================
 # FORMATO DE BATALLAS
 # ============================================================
@@ -1027,6 +1049,14 @@ def evaluar_batalla_para_alerta(item, reglas_campania):
     if visual["indicador_score"] == "🔴":
         problemas.append("T")
 
+    score_critico = alerta_score_general_alcanzada(
+        visual["puntos_pais"],
+        visual["puntos_rival"],
+        objetivo,
+    )
+    if score_critico:
+        problemas.append(f"T≥{GENERAL_SCORE_ALERT_THRESHOLD}")
+
     for division_id in (3, 4, 11):
         detalle = visual["divisiones"].get(division_id)
         if detalle and detalle["indicador"] == "🔴":
@@ -1052,6 +1082,7 @@ def evaluar_batalla_para_alerta(item, reglas_campania):
         "objetivo": objetivo,
         "problemas": problemas,
         "signature": ",".join(problemas) if problemas else "OK",
+        "criticidad": "critica" if score_critico else "normal",
         "resumen": " | ".join(partes),
     }
 
@@ -1089,10 +1120,19 @@ def procesar_estados_alerta(monitor_id, evaluaciones):
                 if previo is None:
                     if actual_problem:
                         debe_notificar = True
-                        tipo = "alerta"
+                        tipo = (
+                            "critica"
+                            if ev.get("criticidad") == "critica"
+                            else "alerta"
+                        )
                 elif previo["signature"] != ev["signature"]:
                     debe_notificar = True
-                    tipo = "alerta" if actual_problem else "recuperado"
+                    if not actual_problem:
+                        tipo = "recuperado"
+                    elif ev.get("criticidad") == "critica":
+                        tipo = "critica"
+                    else:
+                        tipo = "alerta"
 
                 if debe_notificar:
                     eventos.append({
@@ -1201,6 +1241,12 @@ def formatear_evento_alerta(evento):
     if evento["tipo"] == "recuperado":
         titulo = f"✅ <b>RECUPERADO — {rival}</b>"
         estado = "Todo vuelve a estar alineado con la orden."
+    elif evento["tipo"] == "critica":
+        titulo = f"⚠️ <b>ALERTA CRÍTICA — {rival}</b>"
+        estado = (
+            f"El lado incorrecto alcanzó "
+            f"{GENERAL_SCORE_ALERT_THRESHOLD} puntos."
+        )
     else:
         titulo = f"🚨 <b>ALERTA — {rival}</b>"
         estado = (
@@ -1223,7 +1269,13 @@ def formatear_evento_alerta_resumen(evento):
         f"{EREPUBLIK_BASE_URL}/en/military/battlefield/"
         f"{evento['battle_id']}"
     )
-    tipo = "🚨" if evento["tipo"] == "alerta" else "✅"
+    tipo = (
+        "⚠️"
+        if evento["tipo"] == "critica"
+        else "🚨"
+        if evento["tipo"] == "alerta"
+        else "✅"
+    )
     problemas = ", ".join(evento["problemas"]) if evento["problemas"] else "OK"
 
     return (
@@ -1263,6 +1315,7 @@ def formatear_bloques_eventos(monitor, eventos):
 
     bloques = []
     for tipo, titulo in (
+        ("critica", "⚠️ ALERTAS CRÍTICAS"),
         ("alerta", "🚨 ALERTAS"),
         ("recuperado", "✅ RECUPERACIONES"),
     ):

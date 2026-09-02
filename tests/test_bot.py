@@ -125,6 +125,13 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(bot.indicador_division(60, 40, "GANAR", True), "")
         self.assertEqual(bot.indicador_division(40, 60, "GANAR", True), "🔴")
 
+    def test_alerta_de_score_general_usa_el_puntaje_del_lado_incorrecto(self):
+        self.assertTrue(bot.alerta_score_general_alcanzada(40, 50, "GANAR"))
+        self.assertFalse(bot.alerta_score_general_alcanzada(40, 49, "GANAR"))
+        self.assertTrue(bot.alerta_score_general_alcanzada(50, 40, "PERDER"))
+        self.assertFalse(bot.alerta_score_general_alcanzada(40, 50, "PERDER"))
+        self.assertFalse(bot.alerta_score_general_alcanzada(60, 40, "GANAR"))
+
     def test_formatear_bloques_eventos_groups_by_type(self):
         monitor = {"name": "Argentina"}
         eventos = [
