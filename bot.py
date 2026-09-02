@@ -23,7 +23,7 @@ DEFAULT_MONITOR_INTERVAL_SECONDS = 300
 LEGACY_DEFAULT_MONITOR_INTERVAL_SECONDS = 60
 MIN_MONITOR_INTERVAL_SECONDS = 30
 MAX_MONITOR_INTERVAL_SECONDS = 3600
-GENERAL_SCORE_ALERT_THRESHOLD = 50
+GENERAL_SCORE_ALERT_THRESHOLDS = (50, 100, 130)
 BATTLE_WINNING_SCORE = 150
 
 DIVISIONES = {
@@ -924,20 +924,45 @@ def alerta_score_general_alcanzada(
     puntos_pais,
     puntos_rival,
     objetivo,
-    umbral=GENERAL_SCORE_ALERT_THRESHOLD,
+    umbral=GENERAL_SCORE_ALERT_THRESHOLDS[0],
 ):
     """Indica si el lado que contradice la orden alcanzó el umbral."""
     puntos_pais = float(puntos_pais)
     puntos_rival = float(puntos_rival)
     umbral = float(umbral)
 
+    umbral_alcanzado = obtener_umbral_score_general(
+        puntos_pais,
+        puntos_rival,
+        objetivo,
+        (umbral,),
+    )
+    return umbral_alcanzado is not None
+
+
+def obtener_umbral_score_general(
+    puntos_pais,
+    puntos_rival,
+    objetivo,
+    umbrales=GENERAL_SCORE_ALERT_THRESHOLDS,
+):
+    """Devuelve el mayor escalón alcanzado por el lado equivocado."""
+    puntos_pais = float(puntos_pais)
+    puntos_rival = float(puntos_rival)
+
     if objetivo == "GANAR" and puntos_pais < puntos_rival:
-        return puntos_rival >= umbral
+        puntaje_equivocado = puntos_rival
+    elif objetivo == "PERDER" and puntos_pais > puntos_rival:
+        puntaje_equivocado = puntos_pais
+    else:
+        return None
 
-    if objetivo == "PERDER" and puntos_pais > puntos_rival:
-        return puntos_pais >= umbral
-
-    return False
+    alcanzados = [
+        int(umbral)
+        for umbral in umbrales
+        if puntaje_equivocado >= float(umbral)
+    ]
+    return max(alcanzados) if alcanzados else None
 
 
 # ============================================================
@@ -1049,13 +1074,13 @@ def evaluar_batalla_para_alerta(item, reglas_campania):
     if visual["indicador_score"] == "🔴":
         problemas.append("T")
 
-    score_critico = alerta_score_general_alcanzada(
+    umbral_score = obtener_umbral_score_general(
         visual["puntos_pais"],
         visual["puntos_rival"],
         objetivo,
     )
-    if score_critico:
-        problemas.append(f"T≥{GENERAL_SCORE_ALERT_THRESHOLD}")
+    if umbral_score is not None:
+        problemas.append(f"T≥{umbral_score}")
 
     for division_id in (3, 4, 11):
         detalle = visual["divisiones"].get(division_id)
@@ -1082,7 +1107,15 @@ def evaluar_batalla_para_alerta(item, reglas_campania):
         "objetivo": objetivo,
         "problemas": problemas,
         "signature": ",".join(problemas) if problemas else "OK",
-        "criticidad": "critica" if score_critico else "normal",
+        "criticidad": "critica" if umbral_score in {100, 130} else "normal",
+        "umbral_score": umbral_score,
+        "nivel_alerta": (
+            "PRIMERA ALERTA"
+            if umbral_score == 50
+            else "ALERTA CRÍTICA"
+            if umbral_score in {100, 130}
+            else None
+        ),
         "resumen": " | ".join(partes),
     }
 
@@ -1242,10 +1275,19 @@ def formatear_evento_alerta(evento):
         titulo = f"✅ <b>RECUPERADO — {rival}</b>"
         estado = "Todo vuelve a estar alineado con la orden."
     elif evento["tipo"] == "critica":
-        titulo = f"⚠️ <b>ALERTA CRÍTICA — {rival}</b>"
+        titulo = (
+            f"⚠️ <b>{evento.get('nivel_alerta', 'ALERTA CRÍTICA')}"
+            f" — {rival}</b>"
+        )
         estado = (
             f"El lado incorrecto alcanzó "
-            f"{GENERAL_SCORE_ALERT_THRESHOLD} puntos."
+            f"{evento.get('umbral_score')} puntos."
+        )
+    elif evento.get("nivel_alerta") == "PRIMERA ALERTA":
+        titulo = f"🚨 <b>PRIMERA ALERTA — {rival}</b>"
+        estado = (
+            f"El lado incorrecto alcanzó "
+            f"{evento.get('umbral_score')} puntos."
         )
     else:
         titulo = f"🚨 <b>ALERTA — {rival}</b>"

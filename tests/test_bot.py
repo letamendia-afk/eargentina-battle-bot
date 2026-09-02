@@ -132,6 +132,13 @@ class BotHelpersTest(unittest.TestCase):
         self.assertFalse(bot.alerta_score_general_alcanzada(40, 50, "PERDER"))
         self.assertFalse(bot.alerta_score_general_alcanzada(60, 40, "GANAR"))
 
+    def test_umbral_score_general_devuelve_el_mayor_escalon_alcanzado(self):
+        self.assertEqual(bot.obtener_umbral_score_general(40, 50, "GANAR"), 50)
+        self.assertEqual(bot.obtener_umbral_score_general(40, 110, "GANAR"), 100)
+        self.assertEqual(bot.obtener_umbral_score_general(40, 135, "GANAR"), 130)
+        self.assertEqual(bot.obtener_umbral_score_general(50, 40, "PERDER"), 50)
+        self.assertIsNone(bot.obtener_umbral_score_general(60, 40, "GANAR"))
+
     def test_formatear_bloques_eventos_groups_by_type(self):
         monitor = {"name": "Argentina"}
         eventos = [
