@@ -1653,15 +1653,32 @@ async def autorizar(
             )
             return
 
-        if not context.args or not context.args[0].isdigit():
+        telegram_user_id = None
+        telegram_username = None
+
+        if context.args and context.args[0].isdigit():
+            telegram_user_id = int(context.args[0])
+            telegram_username = context.args[1] if len(context.args) > 1 else None
+        elif (
+            update.message
+            and update.message.reply_to_message
+            and update.message.reply_to_message.from_user
+        ):
+            usuario = update.message.reply_to_message.from_user
+            telegram_user_id = int(usuario.id)
+            telegram_username = (
+                f"@{usuario.username}"
+                if usuario.username
+                else None
+            )
+
+        if telegram_user_id is None:
             await update.message.reply_text(
-                "Uso:\n/autorizar <User ID> [@usuario]\n\n"
-                "El User ID se obtiene con /id."
+                "Uso:\n"
+                "/autorizar <User ID> [@usuario]\n"
+                "o respondé al mensaje de la persona con /autorizar."
             )
             return
-
-        telegram_user_id = int(context.args[0])
-        telegram_username = context.args[1] if len(context.args) > 1 else None
 
         guardar_admin(
             monitor["id"],
@@ -1695,13 +1712,26 @@ async def desautorizar(
             )
             return
 
-        if not context.args or not context.args[0].isdigit():
+        telegram_user_id = None
+
+        if context.args and context.args[0].isdigit():
+            telegram_user_id = int(context.args[0])
+        elif (
+            update.message
+            and update.message.reply_to_message
+            and update.message.reply_to_message.from_user
+        ):
+            telegram_user_id = int(
+                update.message.reply_to_message.from_user.id
+            )
+
+        if telegram_user_id is None:
             await update.message.reply_text(
-                "Uso:\n/desautorizar <User ID>"
+                "Uso:\n"
+                "/desautorizar <User ID>\n"
+                "o respondé al mensaje de la persona con /desautorizar."
             )
             return
-
-        telegram_user_id = int(context.args[0])
         quitado = quitar_admin(monitor["id"], telegram_user_id)
 
         if not quitado:

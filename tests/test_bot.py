@@ -312,6 +312,27 @@ class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
         guardar.assert_called_once_with(7, 456, "@nuevo_usuario")
         update.message.reply_text.assert_awaited_once()
 
+    async def test_autorizar_puede_usar_el_mensaje_al_que_se_respondio(self):
+        update = types.SimpleNamespace(
+            effective_user=types.SimpleNamespace(id=10),
+            effective_chat=types.SimpleNamespace(id=123),
+            message=types.SimpleNamespace(
+                reply_to_message=types.SimpleNamespace(
+                    from_user=types.SimpleNamespace(id=456, username="nuevo")
+                ),
+                reply_text=AsyncMock(),
+            ),
+        )
+        context = types.SimpleNamespace(args=[])
+        monitor = {"id": 7, "name": "Argentina"}
+
+        with patch.object(bot, "resolver_monitor_contexto", return_value=monitor), patch.object(
+            bot, "es_admin", return_value=True
+        ), patch.object(bot, "guardar_admin") as guardar:
+            await bot.autorizar(update, context)
+
+        guardar.assert_called_once_with(7, 456, "@nuevo")
+
     async def test_paises_with_argument_sets_chat_country(self):
         fake_monitor = {
             "id": 7,
