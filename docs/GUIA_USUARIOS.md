@@ -144,6 +144,6 @@ Consulta una batalla de control histórica para verificar que el bot pueda comun
 - Las órdenes no se pierden cuando termina una ejecución de GitHub Actions.
 - Una batalla sin orden activa se muestra sin objetivo automático.
 - `[AUTO] GANAR` o `[AUTO] PERDER` representa el objetivo calculado para el país monitoreado.
-- Los círculos verdes no se muestran cuando la situación es correcta; solo aparece 🔴 cuando el tanteador o una división contradice el objetivo.
+- Los círculos verdes no se muestran cuando la situación es correcta; solo aparece 🔴 cuando el tanteador o una división contradice el objetivo. Las alertas automáticas se generan únicamente si el tanteador general contradice el objetivo.
 - El bot avisa por escalones sobre el tanteador general del lado que contradice la orden: a los 50 puntos envía una `PRIMERA ALERTA`, a los 100 una `ALERTA CRÍTICA` y a los 130 una `ALERTA CRÍTICA` urgente. Al llegar a 150 puntos, la batalla se considera ganada.
 - Si cambió un acuerdo político o militar, avisale a un administrador para que actualice la orden.

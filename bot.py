@@ -1070,9 +1070,13 @@ def evaluar_batalla_para_alerta(item, reglas_campania):
     if objetivo is None:
         return None
 
+    # Las alertas se basan en el resultado general; las divisiones solo
+    # detallan el problema cuando el tanteador general ya está equivocado.
+    if visual["indicador_score"] != "🔴":
+        return None
+
     problemas = []
-    if visual["indicador_score"] == "🔴":
-        problemas.append("T")
+    problemas.append("T")
 
     umbral_score = obtener_umbral_score_general(
         visual["puntos_pais"],

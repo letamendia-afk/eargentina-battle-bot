@@ -139,6 +139,18 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(bot.obtener_umbral_score_general(50, 40, "PERDER"), 50)
         self.assertIsNone(bot.obtener_umbral_score_general(60, 40, "GANAR"))
 
+    def test_monitor_no_alerta_divisiones_si_el_tanteador_general_es_correcto(self):
+        item = {"battle_id": 1, "rival_id": 64}
+        visual = {
+            "objetivo": "GANAR",
+            "puntos_pais": 70,
+            "puntos_rival": 30,
+            "indicador_score": "",
+            "divisiones": {3: {"indicador": "🔴"}},
+        }
+        with patch.object(bot, "datos_visuales_batalla", return_value=visual):
+            self.assertIsNone(bot.evaluar_batalla_para_alerta(item, {}))
+
     def test_formatear_bloques_eventos_groups_by_type(self):
         monitor = {"name": "Argentina"}
         eventos = [
