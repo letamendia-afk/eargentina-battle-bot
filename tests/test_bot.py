@@ -117,6 +117,14 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(bot.normalizar_regla_orden("ataque"), "ATACANTE")
         self.assertIsNone(bot.normalizar_regla_orden("neutral"))
 
+    def test_indicadores_solo_muestran_rojo_si_el_resultado_es_incorrecto(self):
+        self.assertEqual(bot.indicador_score(60, 40, "GANAR"), "")
+        self.assertEqual(bot.indicador_score(40, 60, "GANAR"), "🔴")
+        self.assertEqual(bot.indicador_score(40, 60, "PERDER"), "")
+        self.assertEqual(bot.indicador_score(60, 40, "PERDER"), "🔴")
+        self.assertEqual(bot.indicador_division(60, 40, "GANAR", True), "")
+        self.assertEqual(bot.indicador_division(40, 60, "GANAR", True), "🔴")
+
     def test_formatear_bloques_eventos_groups_by_type(self):
         monitor = {"name": "Argentina"}
         eventos = [

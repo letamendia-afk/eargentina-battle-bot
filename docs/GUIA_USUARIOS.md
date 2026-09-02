@@ -144,4 +144,5 @@ Consulta una batalla de control histórica para verificar que el bot pueda comun
 - Las órdenes no se pierden cuando termina una ejecución de GitHub Actions.
 - Una batalla sin orden activa se muestra sin objetivo automático.
 - `[AUTO] GANAR` o `[AUTO] PERDER` representa el objetivo calculado para el país monitoreado.
+- Los círculos verdes no se muestran cuando la situación es correcta; solo aparece 🔴 cuando el tanteador o una división contradice el objetivo.
 - Si cambió un acuerdo político o militar, avisale a un administrador para que actualice la orden.

@@ -889,10 +889,10 @@ def indicador_division(
     )
 
     if objetivo == "GANAR":
-        return "🟢" if pais_ganaria else "🔴"
+        return "" if pais_ganaria else "🔴"
 
     if objetivo == "PERDER":
-        return "🔴" if pais_ganaria else "🟢"
+        return "🔴" if pais_ganaria else ""
 
     return ""
 
@@ -910,10 +910,10 @@ def indicador_score(puntos_pais, puntos_rival, objetivo):
     pais_gana = puntos_pais > puntos_rival
 
     if objetivo == "GANAR":
-        return "🟢" if pais_gana else "🔴"
+        return "" if pais_gana else "🔴"
 
     if objetivo == "PERDER":
-        return "🔴" if pais_gana else "🟢"
+        return "🔴" if pais_gana else ""
 
     return ""
 
