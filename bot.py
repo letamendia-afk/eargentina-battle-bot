@@ -1661,8 +1661,13 @@ AYUDA_USUARIOS = (
     "[AUTO] GANAR o [AUTO] PERDER indica el objetivo calculado "
     "para Argentina. Solo aparece 🔴 cuando el tanteador general "
     "está fuera del objetivo.\n\n"
-    "Las alertas automáticas solo se envían para batallas con una "
-    "orden activa."
+    "El chequeo automático se envía siempre al chat de alertas "
+    "según el intervalo configurado.\n\n"
+    "Las alertas especiales solo se envían para batallas con una "
+    "orden activa cuando el tanteador general va en contra del "
+    "objetivo: a los 50 puntos es PRIMERA ALERTA; a los 100 y "
+    "130 puntos es ALERTA CRÍTICA. A los 150 puntos la batalla "
+    "se considera ganada."
 )
 
 

@@ -300,6 +300,9 @@ class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
         mensaje = update.message.reply_text.await_args.args[0]
         self.assertIn("/ordenes", mensaje)
         self.assertIn("/batallas", mensaje)
+        self.assertIn("50 puntos", mensaje)
+        self.assertIn("100 y 130 puntos", mensaje)
+        self.assertIn("chequeo automático", mensaje)
         self.assertNotIn("/orden ", mensaje)
         self.assertNotIn("/sinorden", mensaje)
         self.assertNotIn("/alertas", mensaje)
