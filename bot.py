@@ -25,6 +25,7 @@ MIN_MONITOR_INTERVAL_SECONDS = 30
 MAX_MONITOR_INTERVAL_SECONDS = 3600
 GENERAL_SCORE_ALERT_THRESHOLDS = (50, 100, 130)
 BATTLE_WINNING_SCORE = 150
+GENERAL_SCORE_ERROR_MARKER = "⚠️"
 
 DIVISIONES = {
     3: "D3",
@@ -969,10 +970,10 @@ def indicador_score(puntos_pais, puntos_rival, objetivo):
     pais_gana = puntos_pais > puntos_rival
 
     if objetivo == "GANAR":
-        return "" if pais_gana else "🔴"
+        return "" if pais_gana else GENERAL_SCORE_ERROR_MARKER
 
     if objetivo == "PERDER":
-        return "🔴" if pais_gana else ""
+        return GENERAL_SCORE_ERROR_MARKER if pais_gana else ""
 
     return ""
 
@@ -1130,7 +1131,7 @@ def evaluar_batalla_para_alerta(item, reglas_campania):
     problemas = []
     umbral_score = None
 
-    if visual["indicador_score"] == "🔴":
+    if visual["indicador_score"] == GENERAL_SCORE_ERROR_MARKER:
         problemas.append("T")
         umbral_score = obtener_umbral_score_general(
             visual["puntos_pais"],
@@ -1659,8 +1660,9 @@ AYUDA_USUARIOS = (
     "/test — Prueba la conexión con eRepublik.\n\n"
     "<b>Cómo leer [AUTO]</b>\n"
     "[AUTO] GANAR o [AUTO] PERDER indica el objetivo calculado "
-    "para Argentina. Solo aparece 🔴 cuando el tanteador general "
-    "está fuera del objetivo.\n\n"
+    "para Argentina. ⚠️ junto a T indica que el tanteador general "
+    "está fuera del objetivo; 🔴 junto a D3, D4 o A indica una "
+    "división fuera de objetivo.\n\n"
     "El chequeo automático se envía siempre al chat de alertas "
     "según el intervalo configurado.\n\n"
     "Las alertas especiales solo se envían para batallas con una "

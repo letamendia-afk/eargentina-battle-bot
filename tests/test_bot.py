@@ -119,9 +119,9 @@ class BotHelpersTest(unittest.TestCase):
 
     def test_indicadores_solo_muestran_rojo_si_el_resultado_es_incorrecto(self):
         self.assertEqual(bot.indicador_score(60, 40, "GANAR"), "")
-        self.assertEqual(bot.indicador_score(40, 60, "GANAR"), "🔴")
+        self.assertEqual(bot.indicador_score(40, 60, "GANAR"), "⚠️")
         self.assertEqual(bot.indicador_score(40, 60, "PERDER"), "")
-        self.assertEqual(bot.indicador_score(60, 40, "PERDER"), "🔴")
+        self.assertEqual(bot.indicador_score(60, 40, "PERDER"), "⚠️")
         self.assertEqual(bot.indicador_division(60, 40, "GANAR", True), "")
         self.assertEqual(bot.indicador_division(40, 60, "GANAR", True), "🔴")
 
@@ -303,6 +303,8 @@ class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("50 puntos", mensaje)
         self.assertIn("100 y 130 puntos", mensaje)
         self.assertIn("chequeo automático", mensaje)
+        self.assertIn("⚠️ junto a T", mensaje)
+        self.assertIn("🔴 junto a D3", mensaje)
         self.assertNotIn("/orden ", mensaje)
         self.assertNotIn("/sinorden", mensaje)
         self.assertNotIn("/alertas", mensaje)
