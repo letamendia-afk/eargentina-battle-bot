@@ -119,11 +119,11 @@ class BotHelpersTest(unittest.TestCase):
 
     def test_indicadores_solo_muestran_rojo_si_el_resultado_es_incorrecto(self):
         self.assertEqual(bot.indicador_score(60, 40, "GANAR"), "")
-        self.assertEqual(bot.indicador_score(40, 60, "GANAR"), "⚠️")
+        self.assertEqual(bot.indicador_score(40, 60, "GANAR"), "🔴")
         self.assertEqual(bot.indicador_score(40, 60, "PERDER"), "")
-        self.assertEqual(bot.indicador_score(60, 40, "PERDER"), "⚠️")
+        self.assertEqual(bot.indicador_score(60, 40, "PERDER"), "🔴")
         self.assertEqual(bot.indicador_division(60, 40, "GANAR", True), "")
-        self.assertEqual(bot.indicador_division(40, 60, "GANAR", True), "🔴")
+        self.assertEqual(bot.indicador_division(40, 60, "GANAR", True), "⚠️")
 
     def test_alerta_de_score_general_usa_el_puntaje_del_lado_incorrecto(self):
         self.assertTrue(bot.alerta_score_general_alcanzada(40, 50, "GANAR"))
@@ -150,7 +150,7 @@ class BotHelpersTest(unittest.TestCase):
                 3: {
                     "pais": 40,
                     "rival": 60,
-                    "indicador": "🔴",
+                    "indicador": "⚠️",
                 }
             },
         }
@@ -303,8 +303,8 @@ class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("50 puntos", mensaje)
         self.assertIn("100 y 130 puntos", mensaje)
         self.assertIn("chequeo automático", mensaje)
-        self.assertIn("⚠️ junto a T", mensaje)
-        self.assertIn("🔴 junto a D3", mensaje)
+        self.assertIn("🔴 junto a T", mensaje)
+        self.assertIn("⚠️ junto a D3", mensaje)
         self.assertNotIn("/orden ", mensaje)
         self.assertNotIn("/sinorden", mensaje)
         self.assertNotIn("/alertas", mensaje)

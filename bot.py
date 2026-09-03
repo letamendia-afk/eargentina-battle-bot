@@ -25,7 +25,8 @@ MIN_MONITOR_INTERVAL_SECONDS = 30
 MAX_MONITOR_INTERVAL_SECONDS = 3600
 GENERAL_SCORE_ALERT_THRESHOLDS = (50, 100, 130)
 BATTLE_WINNING_SCORE = 150
-GENERAL_SCORE_ERROR_MARKER = "⚠️"
+GENERAL_SCORE_ERROR_MARKER = "🔴"
+DIVISION_ERROR_MARKER = "⚠️"
 
 DIVISIONES = {
     3: "D3",
@@ -949,10 +950,10 @@ def indicador_division(
     )
 
     if objetivo == "GANAR":
-        return "" if pais_ganaria else "🔴"
+        return "" if pais_ganaria else DIVISION_ERROR_MARKER
 
     if objetivo == "PERDER":
-        return "🔴" if pais_ganaria else ""
+        return DIVISION_ERROR_MARKER if pais_ganaria else ""
 
     return ""
 
@@ -1660,8 +1661,8 @@ AYUDA_USUARIOS = (
     "/test — Prueba la conexión con eRepublik.\n\n"
     "<b>Cómo leer [AUTO]</b>\n"
     "[AUTO] GANAR o [AUTO] PERDER indica el objetivo calculado "
-    "para Argentina. ⚠️ junto a T indica que el tanteador general "
-    "está fuera del objetivo; 🔴 junto a D3, D4 o A indica una "
+    "para Argentina. 🔴 junto a T indica que el tanteador general "
+    "está fuera del objetivo; ⚠️ junto a D3, D4 o A indica una "
     "división fuera de objetivo.\n\n"
     "El chequeo automático se envía siempre al chat de alertas "
     "según el intervalo configurado.\n\n"
