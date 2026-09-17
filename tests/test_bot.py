@@ -154,6 +154,14 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(bot.resolver_division("aire"), 11)
         self.assertEqual(bot.formatear_antiguedad(3660), "1 h 1 min")
 
+    def test_obtener_minuto_batalla_usa_hora_del_servidor(self):
+        item = {
+            "batalla": {"start": 0},
+            "server_time": 3600,
+        }
+
+        self.assertEqual(bot.obtener_minuto_batalla(item), 60)
+
     def test_indicadores_solo_muestran_rojo_si_el_resultado_es_incorrecto(self):
         self.assertEqual(bot.indicador_score(60, 40, "GANAR"), "")
         self.assertEqual(bot.indicador_score(40, 60, "GANAR"), "🔴")

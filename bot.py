@@ -874,6 +874,32 @@ def obtener_inicio_batalla(batalla):
         return None
 
 
+def obtener_hora_servidor(data, ahora=None):
+    ahora = ahora or datetime.now(timezone.utc)
+    servidor = data.get("time") if isinstance(data, dict) else None
+    if servidor is None:
+        return ahora
+
+    try:
+        return datetime.fromtimestamp(float(servidor), tz=timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return ahora
+
+
+def obtener_minuto_batalla(item, ahora=None):
+    inicio = obtener_inicio_batalla(item["batalla"])
+    if inicio is None:
+        return None
+
+    hora_actual = item.get("server_time")
+    if hora_actual is None:
+        hora_actual = ahora or datetime.now(timezone.utc)
+    else:
+        hora_actual = obtener_hora_servidor({"time": hora_actual}, ahora)
+
+    return max(0, int((hora_actual - inicio).total_seconds() // 60))
+
+
 def formatear_antiguedad(segundos):
     minutos = max(0, int(segundos // 60))
     horas, minutos = divmod(minutos, 60)
@@ -884,13 +910,7 @@ def formatear_antiguedad(segundos):
 
 def obtener_batallas_vacias(data, division_id, minutos, ahora=None):
     """Busca rondas sin dominio en una división y con antigüedad mínima."""
-    ahora = ahora or datetime.now(timezone.utc)
-    servidor = data.get("time") if isinstance(data, dict) else None
-    if servidor is not None:
-        try:
-            ahora = datetime.fromtimestamp(float(servidor), tz=timezone.utc)
-        except (TypeError, ValueError, OverflowError, OSError):
-            pass
+    ahora = obtener_hora_servidor(data, ahora)
 
     resultado = []
     antiguedad_minima = float(minutos) * 60
@@ -978,6 +998,7 @@ def buscar_batallas_pais(data, country_id):
             "rol": rol,
             "invader_id": invader_id,
             "defender_id": defender_id,
+            "server_time": data.get("time") if isinstance(data, dict) else None,
         })
 
     resultado.sort(key=lambda x: x["battle_id"], reverse=True)
@@ -1171,6 +1192,8 @@ def formatear_batalla_pais(item, reglas_campania):
 
     url = f"{EREPUBLIK_BASE_URL}/en/military/battlefield/{battle_id}"
     rival_link = f'<a href="{url}">{rival}</a>'
+    minuto = obtener_minuto_batalla(item)
+    etiqueta_minuto = f" | ⏱️ Minuto {minuto}" if minuto is not None else ""
 
     visual = datos_visuales_batalla(item, reglas_campania)
     objetivo = visual["objetivo"]
@@ -1210,7 +1233,8 @@ def formatear_batalla_pais(item, reglas_campania):
         partes.append(texto)
 
     return (
-        f"{icono_rol} {rival_link}{etiqueta_objetivo}\n"
+        f"{icono_rol} {rival_link}{etiqueta_objetivo}"
+        f"{etiqueta_minuto}\n"
         f"{texto_score} | {' | '.join(partes)}"
     )
 
