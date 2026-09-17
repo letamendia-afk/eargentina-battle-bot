@@ -117,6 +117,43 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(bot.normalizar_regla_orden("ataque"), "ATACANTE")
         self.assertIsNone(bot.normalizar_regla_orden("neutral"))
 
+    def test_obtener_batallas_vacias_filtra_division_y_antiguedad(self):
+        data = {
+            "time": 3600,
+            "battles": {
+                "101": {
+                    "start": 0,
+                    "inv": {"id": 27, "points": 0},
+                    "def": {"id": 64, "points": 0},
+                    "div": {
+                        "1": {"div": 3, "wall": {"for": 27, "dom": 50}},
+                    },
+                },
+                "102": {
+                    "start": 3500,
+                    "inv": {"id": 27, "points": 0},
+                    "def": {"id": 65, "points": 0},
+                    "div": {
+                        "1": {"div": 3, "wall": {"for": 27, "dom": 50}},
+                    },
+                },
+                "103": {
+                    "start": 0,
+                    "inv": {"id": 27, "points": 0},
+                    "def": {"id": 66, "points": 0},
+                    "div": {
+                        "1": {"div": 3, "wall": {"for": 27, "dom": 60}},
+                    },
+                },
+            },
+        }
+
+        resultado = bot.obtener_batallas_vacias(data, 27, 3, 50)
+
+        self.assertEqual([item["battle_id"] for item in resultado], [101])
+        self.assertEqual(bot.resolver_division("aire"), 11)
+        self.assertEqual(bot.formatear_antiguedad(3660), "1 h 1 min")
+
     def test_indicadores_solo_muestran_rojo_si_el_resultado_es_incorrecto(self):
         self.assertEqual(bot.indicador_score(60, 40, "GANAR"), "")
         self.assertEqual(bot.indicador_score(40, 60, "GANAR"), "🔴")

@@ -104,6 +104,16 @@ Chile [AUTO] GANAR
 
 El objetivo se calcula a partir de la orden guardada y del rol que tenga el país monitoreado en esa batalla.
 
+### `/vacias`
+
+Busca rondas de una división que llevan más del tiempo indicado sin dominio de ningún lado. En esta primera versión, “vacía” significa que la pared figura en `50%-50%`.
+
+```text
+/vacias D3 50
+```
+
+También se pueden consultar `D4` y `A` (Aire). El resultado incluye el rival, el ID de la batalla y la antigüedad aproximada de la ronda.
+
 ### `/monitor`
 
 Muestra el estado del monitor automático, el intervalo de revisión, la última revisión y el último error registrado.

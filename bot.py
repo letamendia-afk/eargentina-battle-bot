@@ -34,6 +34,17 @@ DIVISIONES = {
     11: "A",
 }
 
+DIVISIONES_ALIAS = {
+    "3": 3,
+    "d3": 3,
+    "4": 4,
+    "d4": 4,
+    "11": 11,
+    "a": 11,
+    "air": 11,
+    "aire": 11,
+}
+
 DB_TO_APP_RULE = {
     "DEFENDER": "DEFENSOR",
     "ATTACKER": "ATACANTE",
@@ -841,6 +852,75 @@ def obtener_divisiones(batalla):
         except (TypeError, ValueError):
             continue
 
+    return resultado
+
+
+def resolver_division(texto):
+    if texto is None:
+        return None
+    return DIVISIONES_ALIAS.get(str(texto).strip().lower())
+
+
+def obtener_inicio_batalla(batalla):
+    valor = batalla.get("start")
+    if valor is None:
+        return None
+
+    try:
+        if isinstance(valor, (int, float)) or str(valor).isdigit():
+            return datetime.fromtimestamp(float(valor), tz=timezone.utc)
+        return parsear_timestamp_utc(valor)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
+
+
+def formatear_antiguedad(segundos):
+    minutos = max(0, int(segundos // 60))
+    horas, minutos = divmod(minutos, 60)
+    if horas:
+        return f"{horas} h {minutos} min"
+    return f"{minutos} min"
+
+
+def obtener_batallas_vacias(data, country_id, division_id, minutos, ahora=None):
+    """Busca rondas sin dominio en una división y con antigüedad mínima."""
+    ahora = ahora or datetime.now(timezone.utc)
+    servidor = data.get("time") if isinstance(data, dict) else None
+    if servidor is not None:
+        try:
+            ahora = datetime.fromtimestamp(float(servidor), tz=timezone.utc)
+        except (TypeError, ValueError, OverflowError, OSError):
+            pass
+
+    resultado = []
+    antiguedad_minima = float(minutos) * 60
+
+    for item in buscar_batallas_pais(data, country_id):
+        inicio = obtener_inicio_batalla(item["batalla"])
+        if inicio is None:
+            continue
+
+        antiguedad = (ahora - inicio).total_seconds()
+        if antiguedad <= antiguedad_minima:
+            continue
+
+        datos_division = obtener_divisiones(item["batalla"]).get(division_id)
+        if datos_division is None:
+            continue
+
+        # campaignsJson/list expone el dominio de la pared: 50%-50%
+        # representa una ronda sin dominio de ningún lado.
+        if abs(datos_division["percentage"] - 50) > 0.001:
+            continue
+
+        resultado.append({
+            **item,
+            "division_id": division_id,
+            "division": datos_division,
+            "antiguedad_segundos": antiguedad,
+        })
+
+    resultado.sort(key=lambda x: x["antiguedad_segundos"], reverse=True)
     return resultado
 
 
@@ -1655,6 +1735,7 @@ AYUDA_USUARIOS = (
     "/pais reset — Vuelve al país predeterminado.\n"
     "/ordenes — Muestra las órdenes activas.\n"
     "/batallas — Muestra las batallas y los objetivos [AUTO].\n"
+    "/vacias D3 50 — Busca rondas D3 en 50%-50% con más de 50 minutos.\n"
     "/monitor — Muestra el estado de las alertas automáticas.\n"
     "/estado — Muestra el estado general del bot.\n"
     "/id — Muestra el ID de Telegram del usuario y del chat.\n"
@@ -2083,6 +2164,87 @@ async def mostrar_batallas(
         )
 
 
+async def mostrar_batallas_vacias(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    try:
+        if len(context.args) != 2:
+            await update.message.reply_text(
+                "Uso: /vacias <división> <minutos>\n"
+                "Ejemplo: /vacias D3 50\n"
+                "Divisiones válidas: D3, D4 y A."
+            )
+            return
+
+        division_id = resolver_division(context.args[0])
+        if division_id is None:
+            await update.message.reply_text(
+                "❌ División no válida. Usá D3, D4 o A."
+            )
+            return
+
+        try:
+            minutos = int(context.args[1])
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Los minutos deben ser un número entero positivo."
+            )
+            return
+
+        if minutos < 1:
+            await update.message.reply_text(
+                "❌ Los minutos deben ser un número entero positivo."
+            )
+            return
+
+        monitor = resolver_monitor_contexto(update)
+        data = consultar_campanas()
+        batallas = obtener_batallas_vacias(
+            data,
+            monitor["erepublik_country_id"],
+            division_id,
+            minutos,
+        )
+
+        titulo = (
+            f"🔎 <b>BATALLAS VACÍAS — {html.escape(monitor['name'])}</b>\n"
+            f"División: {DIVISIONES[division_id]} | Más de: {minutos} min\n"
+            "Criterio: dominio 50%-50%\n"
+        )
+
+        if not batallas:
+            await update.message.reply_text(
+                titulo + "\nNo encontré rondas que cumplan esos criterios.",
+                parse_mode="HTML",
+            )
+            return
+
+        filas = []
+        for item in batallas:
+            rival = html.escape(nombre_pais(item["rival_id"]))
+            icono_rol = "⚔️" if item["rol"] == "atacante" else "🛡️"
+            url = f"{EREPUBLIK_BASE_URL}/en/military/battlefield/{item['battle_id']}"
+            filas.append(
+                f"{icono_rol} <a href=\"{url}\">{rival}</a> "
+                f"(ID {item['battle_id']})\n"
+                f"{DIVISIONES[division_id]} 50%-50% | "
+                f"Antigüedad: {formatear_antiguedad(item['antiguedad_segundos'])}"
+            )
+
+        await update.message.reply_text(
+            titulo + f"\nEncontradas: {len(filas)}\n\n" + "\n\n".join(filas),
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+        )
+
+    except Exception as exc:
+        await update.message.reply_text(
+            "❌ Error en /vacias\n\n"
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
 async def test(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -2460,6 +2622,7 @@ def main():
         ("ordenes", ordenes),
         ("test", test),
         ("batallas", mostrar_batallas),
+        ("vacias", mostrar_batallas_vacias),
         ("monitor", monitor_status),
         ("alertas", alertas),
         ("intervalo", intervalo),
