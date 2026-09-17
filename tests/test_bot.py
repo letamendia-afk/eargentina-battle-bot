@@ -148,7 +148,7 @@ class BotHelpersTest(unittest.TestCase):
             },
         }
 
-        resultado = bot.obtener_batallas_vacias(data, 27, 3, 50)
+        resultado = bot.obtener_batallas_vacias(data, 3, 50)
 
         self.assertEqual([item["battle_id"] for item in resultado], [101])
         self.assertEqual(bot.resolver_division("aire"), 11)

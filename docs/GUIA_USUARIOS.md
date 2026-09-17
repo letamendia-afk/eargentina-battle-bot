@@ -106,7 +106,7 @@ El objetivo se calcula a partir de la orden guardada y del rol que tenga el paí
 
 ### `/vacias`
 
-Busca rondas de una división que llevan más del tiempo indicado sin dominio de ningún lado. En esta primera versión, “vacía” significa que la pared figura en `50%-50%`.
+Busca en todas las batallas activas rondas de una división que llevan más del tiempo indicado sin dominio de ningún lado. En esta primera versión, “vacía” significa que la pared figura en `50%-50%`.
 
 ```text
 /vacias D3 50

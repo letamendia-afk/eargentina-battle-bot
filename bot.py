@@ -882,7 +882,7 @@ def formatear_antiguedad(segundos):
     return f"{minutos} min"
 
 
-def obtener_batallas_vacias(data, country_id, division_id, minutos, ahora=None):
+def obtener_batallas_vacias(data, division_id, minutos, ahora=None):
     """Busca rondas sin dominio en una división y con antigüedad mínima."""
     ahora = ahora or datetime.now(timezone.utc)
     servidor = data.get("time") if isinstance(data, dict) else None
@@ -895,7 +895,24 @@ def obtener_batallas_vacias(data, country_id, division_id, minutos, ahora=None):
     resultado = []
     antiguedad_minima = float(minutos) * 60
 
-    for item in buscar_batallas_pais(data, country_id):
+    for battle_id, batalla in obtener_batallas(data).items():
+        inv = batalla.get("inv", {})
+        defender = batalla.get("def", {})
+        try:
+            invader_id = int(inv.get("id"))
+            defender_id = int(defender.get("id"))
+        except (TypeError, ValueError):
+            continue
+
+        item = {
+            "battle_id": battle_id,
+            "batalla": batalla,
+            "country_id": invader_id,
+            "rival_id": defender_id,
+            "rol": "atacante",
+            "invader_id": invader_id,
+            "defender_id": defender_id,
+        }
         inicio = obtener_inicio_batalla(item["batalla"])
         if inicio is None:
             continue
@@ -2198,17 +2215,15 @@ async def mostrar_batallas_vacias(
             )
             return
 
-        monitor = resolver_monitor_contexto(update)
         data = consultar_campanas()
         batallas = obtener_batallas_vacias(
             data,
-            monitor["erepublik_country_id"],
             division_id,
             minutos,
         )
 
         titulo = (
-            f"🔎 <b>BATALLAS VACÍAS — {html.escape(monitor['name'])}</b>\n"
+            "🔎 <b>BATALLAS VACÍAS — TODOS LOS PAÍSES</b>\n"
             f"División: {DIVISIONES[division_id]} | Más de: {minutos} min\n"
             "Criterio: dominio 50%-50%\n"
         )
@@ -2222,11 +2237,12 @@ async def mostrar_batallas_vacias(
 
         filas = []
         for item in batallas:
-            rival = html.escape(nombre_pais(item["rival_id"]))
-            icono_rol = "⚔️" if item["rol"] == "atacante" else "🛡️"
+            atacante = html.escape(nombre_pais(item["invader_id"]))
+            defensor = html.escape(nombre_pais(item["defender_id"]))
             url = f"{EREPUBLIK_BASE_URL}/en/military/battlefield/{item['battle_id']}"
             filas.append(
-                f"{icono_rol} <a href=\"{url}\">{rival}</a> "
+                f"⚔️ <a href=\"{url}\">{atacante}</a> "
+                f"vs 🛡️ {defensor} "
                 f"(ID {item['battle_id']})\n"
                 f"{DIVISIONES[division_id]} 50%-50% | "
                 f"Antigüedad: {formatear_antiguedad(item['antiguedad_segundos'])}"
