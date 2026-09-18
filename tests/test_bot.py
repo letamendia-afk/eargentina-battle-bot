@@ -145,14 +145,28 @@ class BotHelpersTest(unittest.TestCase):
                         "1": {"div": 3, "wall": {"for": 27, "dom": 60}},
                     },
                 },
+                "104": {
+                    "start": 0,
+                    "inv": {"id": 27, "points": 0},
+                    "def": {"id": 67, "points": 0},
+                    "div": {
+                        "1": {"div": 3, "wall": {"for": 27, "dom": 100}},
+                    },
+                },
             },
         }
 
         resultado = bot.obtener_batallas_vacias(data, 3, 50)
 
-        self.assertEqual([item["battle_id"] for item in resultado], [101])
+        self.assertEqual([item["battle_id"] for item in resultado], [101, 104])
         self.assertEqual(bot.resolver_division("aire"), 11)
         self.assertEqual(bot.formatear_antiguedad(3660), "1 h 1 min")
+        self.assertTrue(
+            bot.division_tiene_lado_sin_dominio({"percentage": 100})
+        )
+        self.assertFalse(
+            bot.division_tiene_lado_sin_dominio({"percentage": 60})
+        )
 
     def test_obtener_minuto_batalla_usa_hora_del_servidor(self):
         item = {

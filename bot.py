@@ -908,6 +908,31 @@ def formatear_antiguedad(segundos):
     return f"{minutos} min"
 
 
+def division_tiene_lado_sin_dominio(datos_division):
+    porcentaje = float(datos_division["percentage"])
+    return (
+        abs(porcentaje - 50) <= 0.001
+        or abs(porcentaje) <= 0.001
+        or abs(porcentaje - 100) <= 0.001
+    )
+
+
+def formatear_lado_sin_dominio(datos_division, invader_id, defender_id):
+    porcentaje = float(datos_division["percentage"])
+    if abs(porcentaje - 50) <= 0.001:
+        return "ambos lados"
+
+    if porcentaje <= 0.001:
+        lado = datos_division["country_id"]
+    else:
+        lado = (
+            defender_id
+            if datos_division["country_id"] == invader_id
+            else invader_id
+        )
+    return nombre_pais(lado)
+
+
 def obtener_batallas_vacias(data, division_id, minutos, ahora=None):
     """Busca rondas sin dominio en una división y con antigüedad mínima."""
     ahora = obtener_hora_servidor(data, ahora)
@@ -945,9 +970,9 @@ def obtener_batallas_vacias(data, division_id, minutos, ahora=None):
         if datos_division is None:
             continue
 
-        # campaignsJson/list expone el dominio de la pared: 50%-50%
-        # representa una ronda sin dominio de ningún lado.
-        if abs(datos_division["percentage"] - 50) > 0.001:
+        # La pared permite detectar los casos útiles para buscar medalla:
+        # empate total o un lado completamente en cero.
+        if not division_tiene_lado_sin_dominio(datos_division):
             continue
 
         resultado.append({
@@ -1776,7 +1801,7 @@ AYUDA_USUARIOS = (
     "/pais reset — Vuelve al país predeterminado.\n"
     "/ordenes — Muestra las órdenes activas.\n"
     "/batallas — Muestra las batallas y los objetivos [AUTO].\n"
-    "/vacias D3 50 — Busca rondas D3 en 50%-50% con más de 50 minutos.\n"
+    "/vacias D3 50 — Busca rondas D3 con un lado en 0% y más de 50 minutos.\n"
     "/monitor — Muestra el estado de las alertas automáticas.\n"
     "/estado — Muestra el estado general del bot.\n"
     "/id — Muestra el ID de Telegram del usuario y del chat.\n"
@@ -2249,7 +2274,7 @@ async def mostrar_batallas_vacias(
         titulo = (
             "🔎 <b>BATALLAS VACÍAS — TODOS LOS PAÍSES</b>\n"
             f"División: {DIVISIONES[division_id]} | Más de: {minutos} min\n"
-            "Criterio: dominio 50%-50%\n"
+            "Criterio: pared 50%-50%, 100%-0% o 0%-100%\n"
         )
 
         if not batallas:
@@ -2268,7 +2293,11 @@ async def mostrar_batallas_vacias(
                 f"⚔️ <a href=\"{url}\">{atacante}</a> "
                 f"vs 🛡️ {defensor} "
                 f"(ID {item['battle_id']})\n"
-                f"{DIVISIONES[division_id]} 50%-50% | "
+                f"{DIVISIONES[division_id]} "
+                f"{formatear_porcentaje(item['division']['percentage'])}% - "
+                f"{formatear_porcentaje(100 - item['division']['percentage'])}% | "
+                f"Lado sin dominio: "
+                f"{html.escape(formatear_lado_sin_dominio(item['division'], item['invader_id'], item['defender_id']))} | "
                 f"Antigüedad: {formatear_antiguedad(item['antiguedad_segundos'])}"
             )
 
