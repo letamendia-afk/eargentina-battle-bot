@@ -104,15 +104,15 @@ Chile [AUTO] GANAR
 
 El objetivo se calcula a partir de la orden guardada y del rol que tenga el país monitoreado en esa batalla.
 
-### Órdenes excepcionales por TW
+### Órdenes excepcionales por batalla
 
-Un administrador puede cambiar el objetivo de una sola TW sin modificar la orden general del rival:
+Una TW es la guerra completa; dentro de ella pueden existir varias batallas o rondas. Un administrador puede cambiar el objetivo de una sola batalla sin modificar la orden general del rival:
 
 ```text
 /ordenunica 123456 defensor
 ```
 
-La TW debe estar activa e incluir al país monitoreado. En `/batallas` y en el chequeo automático aparecerá como `[ÚNICA]`. Se elimina automáticamente cuando la TW deja de estar activa.
+La batalla debe estar activa e incluir al país monitoreado. En `/batallas` y en el chequeo automático aparecerá como `[ÚNICA]`. Se elimina automáticamente cuando esa batalla termina, aunque la TW continúe y pueda abrirse otra ronda.
 
 Para retirarla manualmente:
 

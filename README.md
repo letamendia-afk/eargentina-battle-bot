@@ -26,7 +26,7 @@ La guía para usuarios comunes está en [`docs/GUIA_USUARIOS.md`](docs/GUIA_USUA
 - `/<alias_pais>` — alias configurado en `monitored_countries.telegram_command`.
 - `/orden <pais o ID> defensor|atacante` — crea o actualiza una orden persistente. Solo administradores.
 - `/sinorden <pais o ID>` — desactiva una orden. Solo administradores.
-- `/ordenunica <ID de batalla> defensor|atacante` — aplica una orden solo a una TW activa. Solo administradores.
+- `/ordenunica <ID de batalla> defensor|atacante` — aplica una orden solo a una batalla activa. Solo administradores.
 - `/sinordenunica <ID de batalla>` — elimina una orden excepcional. Solo administradores.
 - `/ordenes` — lista órdenes activas.
 

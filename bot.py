@@ -2239,7 +2239,7 @@ async def ordenunica(
         batalla = buscar_batalla(consultar_campanas(), battle_id)
         if batalla is None:
             await update.message.reply_text(
-                "❌ No encontré esa batalla entre las TW activas."
+                "❌ No encontré esa batalla entre las batallas activas."
             )
             return
 
@@ -2267,9 +2267,9 @@ async def ordenunica(
 
         await update.message.reply_text(
             "✅ Orden única actualizada\n\n"
-            f"TW: {nombre_pais(invader_id)} vs {nombre_pais(defender_id)}\n"
+            f"Batalla: {nombre_pais(invader_id)} vs {nombre_pais(defender_id)}\n"
             f"Objetivo: gana {regla}\n"
-            "No modifica la orden general y se elimina cuando termine la TW."
+            "No modifica la orden general y se elimina cuando termine esta batalla."
         )
 
     except Exception as exc:
@@ -2346,7 +2346,7 @@ async def ordenes(
             lineas.extend(["", "⏱️ ÓRDENES ÚNICAS"])
             for battle_id, regla in sorted(ordenes_unicas.items()):
                 lineas.append(
-                    f"• TW {battle_id} → {regla}"
+                    f"• Batalla {battle_id} → {regla}"
                 )
 
         lineas.extend([
