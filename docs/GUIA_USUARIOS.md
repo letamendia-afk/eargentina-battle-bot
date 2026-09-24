@@ -106,7 +106,7 @@ El objetivo se calcula a partir de la orden guardada y del rol que tenga el paí
 
 ### Órdenes excepcionales por batalla
 
-Una TW es la guerra completa; dentro de ella pueden existir varias batallas o rondas. Un administrador puede cambiar el objetivo de una sola batalla sin modificar la orden general del rival:
+Una TW es la guerra completa; dentro de ella pueden existir varias batallas, y cada batalla puede tener distintos rounds o rondas. Un administrador puede cambiar el objetivo de una sola batalla sin modificar la orden general del rival:
 
 ```text
 /ordenunica 123456 defensor
