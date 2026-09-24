@@ -418,6 +418,22 @@ def asegurar_esquema_monitor():
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS battle_orders_once (
+                    monitored_country_id BIGINT NOT NULL
+                        REFERENCES monitored_countries(id)
+                        ON DELETE CASCADE,
+                    battle_id BIGINT NOT NULL,
+                    winner_side VARCHAR(10) NOT NULL
+                        CHECK (winner_side IN ('DEFENDER', 'ATTACKER')),
+                    created_by_telegram_id BIGINT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (monitored_country_id, battle_id)
+                )
+                """
+            )
+            cur.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_monitor_alert_state_updated
                 ON monitor_alert_state (updated_at)
                 """
@@ -676,6 +692,81 @@ def obtener_reglas_campania(monitor_id=None):
                     reglas[int(opponent_country_id)] = regla_app
 
     return reglas
+
+
+def obtener_ordenes_unicas(monitor_id):
+    ordenes = {}
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT battle_id, winner_side
+                FROM battle_orders_once
+                WHERE monitored_country_id = %s
+                """,
+                (int(monitor_id),),
+            )
+            for battle_id, winner_side in cur.fetchall():
+                regla_app = DB_TO_APP_RULE.get(str(winner_side).upper())
+                if regla_app:
+                    ordenes[int(battle_id)] = regla_app
+    return ordenes
+
+
+def guardar_orden_unica(monitor_id, battle_id, regla_app, telegram_user_id):
+    winner_side = APP_TO_DB_RULE[regla_app]
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO battle_orders_once (
+                    monitored_country_id,
+                    battle_id,
+                    winner_side,
+                    created_by_telegram_id,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (monitored_country_id, battle_id)
+                DO UPDATE SET
+                    winner_side = EXCLUDED.winner_side,
+                    created_by_telegram_id = EXCLUDED.created_by_telegram_id,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    int(monitor_id),
+                    int(battle_id),
+                    winner_side,
+                    int(telegram_user_id),
+                ),
+            )
+
+
+def eliminar_orden_unica(monitor_id, battle_id):
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM battle_orders_once
+                WHERE monitored_country_id = %s
+                  AND battle_id = %s
+                """,
+                (int(monitor_id), int(battle_id)),
+            )
+            return cur.rowcount > 0
+
+
+def limpiar_ordenes_unicas(monitor_id, battle_ids):
+    with conectar_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM battle_orders_once
+                WHERE monitored_country_id = %s
+                  AND NOT (battle_id = ANY(%s))
+                """,
+                (int(monitor_id), list(map(int, battle_ids))),
+            )
 
 
 def guardar_orden(monitor_id, opponent_country_id, regla_app, telegram_user_id):
@@ -1048,8 +1139,11 @@ def obtener_score_pais(item):
 # OBJETIVOS / INDICADORES
 # ============================================================
 
-def obtener_objetivo_auto(item, reglas_campania):
-    regla = reglas_campania.get(item["rival_id"])
+def obtener_objetivo_auto(item, reglas_campania, ordenes_unicas=None):
+    ordenes_unicas = ordenes_unicas or {}
+    regla = ordenes_unicas.get(item["battle_id"])
+    if regla is None:
+        regla = reglas_campania.get(item["rival_id"])
     if regla is None:
         return None
 
@@ -1171,8 +1265,12 @@ def obtener_umbral_score_general(
 # FORMATO DE BATALLAS
 # ============================================================
 
-def datos_visuales_batalla(item, reglas_campania):
-    objetivo = obtener_objetivo_auto(item, reglas_campania)
+def datos_visuales_batalla(item, reglas_campania, ordenes_unicas=None):
+    objetivo = obtener_objetivo_auto(
+        item,
+        reglas_campania,
+        ordenes_unicas,
+    )
     pais_es_defensor = item["defender_id"] == item["country_id"]
     puntos_pais, puntos_rival = obtener_score_pais(item)
     divisiones = obtener_divisiones(item["batalla"])
@@ -1210,7 +1308,7 @@ def datos_visuales_batalla(item, reglas_campania):
     }
 
 
-def formatear_batalla_pais(item, reglas_campania):
+def formatear_batalla_pais(item, reglas_campania, ordenes_unicas=None):
     battle_id = item["battle_id"]
     rival = html.escape(nombre_pais(item["rival_id"]))
     icono_rol = "⚔️" if item["rol"] == "atacante" else "🛡️"
@@ -1220,11 +1318,17 @@ def formatear_batalla_pais(item, reglas_campania):
     minuto = obtener_minuto_batalla(item)
     etiqueta_minuto = f" | ⏱️ Minuto {minuto}" if minuto is not None else ""
 
-    visual = datos_visuales_batalla(item, reglas_campania)
+    visual = datos_visuales_batalla(
+        item,
+        reglas_campania,
+        ordenes_unicas,
+    )
     objetivo = visual["objetivo"]
 
+    es_unica = item["battle_id"] in (ordenes_unicas or {})
+    etiqueta = "[ÚNICA]" if es_unica else "[AUTO]"
     etiqueta_objetivo = (
-        f" | <b>[AUTO] {objetivo}</b>"
+        f" | <b>{etiqueta} {objetivo}</b>"
         if objetivo
         else ""
     )
@@ -1268,8 +1372,12 @@ def formatear_batalla_pais(item, reglas_campania):
 # MONITOR AUTOMÁTICO
 # ============================================================
 
-def evaluar_batalla_para_alerta(item, reglas_campania):
-    visual = datos_visuales_batalla(item, reglas_campania)
+def evaluar_batalla_para_alerta(item, reglas_campania, ordenes_unicas=None):
+    visual = datos_visuales_batalla(
+        item,
+        reglas_campania,
+        ordenes_unicas,
+    )
     objetivo = visual["objetivo"]
 
     if objetivo is None:
@@ -1411,7 +1519,12 @@ def procesar_estados_alerta(monitor_id, evaluaciones):
     return eventos
 
 
-def formatear_reporte_monitor(monitor, batallas, reglas_campania):
+def formatear_reporte_monitor(
+    monitor,
+    batallas,
+    reglas_campania,
+    ordenes_unicas=None,
+):
     """Construye el reporte periódico, incluso cuando no hay alertas."""
     encabezado = [
         f"📡 <b>CHEQUEO AUTOMÁTICO — {html.escape(monitor['name'])}</b>",
@@ -1425,7 +1538,11 @@ def formatear_reporte_monitor(monitor, batallas, reglas_campania):
     return "\n\n".join(
         encabezado
         + [
-            formatear_batalla_pais(item, reglas_campania)
+            formatear_batalla_pais(
+                item,
+                reglas_campania,
+                ordenes_unicas,
+            )
             for item in batallas
         ]
     )
@@ -1443,16 +1560,25 @@ def evaluar_monitor_sync(monitor_id=None):
         }
 
     reglas = obtener_reglas_campania(monitor["id"])
+    ordenes_unicas = obtener_ordenes_unicas(monitor["id"])
 
     data = consultar_campanas()
     batallas = buscar_batallas_pais(
         data,
         monitor["erepublik_country_id"],
     )
+    limpiar_ordenes_unicas(
+        monitor["id"],
+        [item["battle_id"] for item in batallas],
+    )
+    ordenes_unicas = obtener_ordenes_unicas(monitor["id"])
     batallas_con_orden = [
         item
         for item in batallas
-        if item["rival_id"] in reglas
+        if (
+            item["rival_id"] in reglas
+            or item["battle_id"] in ordenes_unicas
+        )
     ]
 
     evaluaciones = []
@@ -1460,6 +1586,7 @@ def evaluar_monitor_sync(monitor_id=None):
         evaluacion = evaluar_batalla_para_alerta(
             item,
             reglas,
+            ordenes_unicas,
         )
         if evaluacion:
             evaluaciones.append(evaluacion)
@@ -1485,6 +1612,7 @@ def evaluar_monitor_sync(monitor_id=None):
         "events": eventos,
         "battles": batallas,
         "rules": reglas,
+        "one_time_orders": ordenes_unicas,
         "checked": True,
         "relevant_battles": len(evaluaciones),
     }
@@ -1686,6 +1814,7 @@ async def monitor_loop(application: Application):
                             monitor,
                             resultado["battles"],
                             resultado["rules"],
+                            resultado["one_time_orders"],
                         )
                         try:
                             await application.bot.send_message(
@@ -2079,6 +2208,111 @@ async def sinorden(
         )
 
 
+async def ordenunica(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    try:
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
+            await update.message.reply_text(
+                "⛔ Este comando está reservado a administradores."
+            )
+            return
+
+        if len(context.args) != 2 or not context.args[0].isdigit():
+            await update.message.reply_text(
+                "Uso:\n/ordenunica <ID de batalla> defensor|atacante\n"
+                "Ejemplo:\n/ordenunica 123456 defensor"
+            )
+            return
+
+        regla = normalizar_regla_orden(context.args[1])
+        if regla is None:
+            await update.message.reply_text(
+                "La orden debe ser defensor o atacante."
+            )
+            return
+
+        battle_id = int(context.args[0])
+        batalla = buscar_batalla(consultar_campanas(), battle_id)
+        if batalla is None:
+            await update.message.reply_text(
+                "❌ No encontré esa batalla entre las TW activas."
+            )
+            return
+
+        try:
+            invader_id = int(batalla["inv"]["id"])
+            defender_id = int(batalla["def"]["id"])
+        except (KeyError, TypeError, ValueError):
+            await update.message.reply_text(
+                "❌ La batalla no tiene datos completos de atacante y defensor."
+            )
+            return
+
+        if monitor["erepublik_country_id"] not in {invader_id, defender_id}:
+            await update.message.reply_text(
+                "❌ Esa batalla no incluye al país monitoreado."
+            )
+            return
+
+        guardar_orden_unica(
+            monitor["id"],
+            battle_id,
+            regla,
+            update.effective_user.id,
+        )
+
+        await update.message.reply_text(
+            "✅ Orden única actualizada\n\n"
+            f"TW: {nombre_pais(invader_id)} vs {nombre_pais(defender_id)}\n"
+            f"Objetivo: gana {regla}\n"
+            "No modifica la orden general y se elimina cuando termine la TW."
+        )
+
+    except Exception as exc:
+        await update.message.reply_text(
+            "❌ Error en /ordenunica\n\n"
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
+async def sinordenunica(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    try:
+        monitor = resolver_monitor_contexto(update)
+
+        if not es_admin(update, monitor["id"]):
+            await update.message.reply_text(
+                "⛔ Este comando está reservado a administradores."
+            )
+            return
+
+        if len(context.args) != 1 or not context.args[0].isdigit():
+            await update.message.reply_text(
+                "Uso:\n/sinordenunica <ID de batalla>"
+            )
+            return
+
+        if not eliminar_orden_unica(monitor["id"], int(context.args[0])):
+            await update.message.reply_text(
+                "⚠️ No había una orden única cargada para esa batalla."
+            )
+            return
+
+        await update.message.reply_text("✅ Orden única eliminada.")
+
+    except Exception as exc:
+        await update.message.reply_text(
+            "❌ Error en /sinordenunica\n\n"
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
 async def ordenes(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -2086,8 +2320,9 @@ async def ordenes(
     try:
         monitor = resolver_monitor_contexto(update)
         reglas = obtener_reglas_campania(monitor["id"])
+        ordenes_unicas = obtener_ordenes_unicas(monitor["id"])
 
-        if not reglas:
+        if not reglas and not ordenes_unicas:
             await update.message.reply_text(
                 "📋 No hay órdenes activas."
             )
@@ -2106,6 +2341,13 @@ async def ordenes(
             lineas.append(
                 f"• {nombre_pais(country_id)} → {regla}"
             )
+
+        if ordenes_unicas:
+            lineas.extend(["", "⏱️ ÓRDENES ÚNICAS"])
+            for battle_id, regla in sorted(ordenes_unicas.items()):
+                lineas.append(
+                    f"• TW {battle_id} → {regla}"
+                )
 
         lineas.extend([
             "",
@@ -2193,6 +2435,11 @@ async def mostrar_batallas(
             data,
             monitor["erepublik_country_id"],
         )
+        limpiar_ordenes_unicas(
+            monitor["id"],
+            [item["battle_id"] for item in batallas],
+        )
+        ordenes_unicas = obtener_ordenes_unicas(monitor["id"])
 
         if not batallas:
             await update.message.reply_text(
@@ -2202,7 +2449,11 @@ async def mostrar_batallas(
             return
 
         bloques = [
-            formatear_batalla_pais(item, reglas)
+            formatear_batalla_pais(
+                item,
+                reglas,
+                ordenes_unicas,
+            )
             for item in batallas
         ]
 
@@ -2688,6 +2939,8 @@ def main():
         ("paises", paises),
         ("orden", orden),
         ("sinorden", sinorden),
+        ("ordenunica", ordenunica),
+        ("sinordenunica", sinordenunica),
         ("ordenes", ordenes),
         ("test", test),
         ("batallas", mostrar_batallas),

@@ -38,6 +38,19 @@ CREATE TABLE IF NOT EXISTS campaign_orders (
     UNIQUE (monitored_country_id, opponent_country_id)
 );
 
+CREATE TABLE IF NOT EXISTS battle_orders_once (
+    monitored_country_id BIGINT NOT NULL
+        REFERENCES monitored_countries(id)
+        ON DELETE CASCADE,
+    battle_id BIGINT NOT NULL,
+    winner_side VARCHAR(10) NOT NULL
+        CHECK (winner_side IN ('DEFENDER', 'ATTACKER')),
+    created_by_telegram_id BIGINT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (monitored_country_id, battle_id)
+);
+
 CREATE TABLE IF NOT EXISTS country_settings (
     id BIGSERIAL PRIMARY KEY,
     monitored_country_id BIGINT NOT NULL
@@ -76,6 +89,9 @@ ON campaign_orders (monitored_country_id);
 
 CREATE INDEX IF NOT EXISTS idx_campaign_orders_opponent
 ON campaign_orders (opponent_country_id);
+
+CREATE INDEX IF NOT EXISTS idx_battle_orders_once_country
+ON battle_orders_once (monitored_country_id);
 
 CREATE INDEX IF NOT EXISTS idx_chat_country_preferences_country
 ON chat_country_preferences (monitored_country_id);

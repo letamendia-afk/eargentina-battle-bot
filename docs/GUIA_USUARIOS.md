@@ -104,6 +104,22 @@ Chile [AUTO] GANAR
 
 El objetivo se calcula a partir de la orden guardada y del rol que tenga el país monitoreado en esa batalla.
 
+### Órdenes excepcionales por TW
+
+Un administrador puede cambiar el objetivo de una sola TW sin modificar la orden general del rival:
+
+```text
+/ordenunica 123456 defensor
+```
+
+La TW debe estar activa e incluir al país monitoreado. En `/batallas` y en el chequeo automático aparecerá como `[ÚNICA]`. Se elimina automáticamente cuando la TW deja de estar activa.
+
+Para retirarla manualmente:
+
+```text
+/sinordenunica 123456
+```
+
 ### `/vacias`
 
 Busca en todas las batallas activas rondas de una división que llevan más del tiempo indicado con un lado sin dominio. En esta primera versión, los casos buscados son `50%-50%`, `100%-0%` y `0%-100%`.

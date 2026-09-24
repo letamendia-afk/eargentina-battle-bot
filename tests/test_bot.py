@@ -117,6 +117,24 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(bot.normalizar_regla_orden("ataque"), "ATACANTE")
         self.assertIsNone(bot.normalizar_regla_orden("neutral"))
 
+    def test_orden_unica_tiene_prioridad_sobre_orden_general(self):
+        item = {
+            "battle_id": 123456,
+            "rival_id": 64,
+            "country_id": 27,
+            "invader_id": 27,
+            "defender_id": 64,
+        }
+
+        self.assertEqual(
+            bot.obtener_objetivo_auto(
+                item,
+                {64: "DEFENSOR"},
+                {123456: "ATACANTE"},
+            ),
+            "GANAR",
+        )
+
     def test_obtener_batallas_vacias_filtra_division_y_antiguedad(self):
         data = {
             "time": 3600,
