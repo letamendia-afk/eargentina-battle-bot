@@ -10,12 +10,18 @@ Los usuarios comunes no modifican las órdenes. Pueden consultarlas y ver cómo 
 
 ## Comandos disponibles
 
-### `/help`
+### `/help` o `/ayuda`
 
 Muestra dentro de Telegram esta ayuda con los comandos disponibles para usuarios comunes.
 
 ```text
 /help
+```
+
+También podés usar:
+
+```text
+/ayuda
 ```
 
 ### `/start`

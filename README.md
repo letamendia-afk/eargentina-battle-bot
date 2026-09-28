@@ -20,6 +20,7 @@ El proyecto nació para Argentina, pero la lógica y la base están preparadas p
 La guía para usuarios comunes está en [`docs/GUIA_USUARIOS.md`](docs/GUIA_USUARIOS.md).
 
 - `/batallas` — lista batallas activas.
+- `/ayuda` o `/help` — muestra los comandos disponibles para usuarios generales.
 - `/vacias <D3|D4|A> <minutos>` — lista, entre todos los países, rondas con pared `50%-50%`, `100%-0%` o `0%-100%` que superan la antigüedad indicada.
 - `/pais <país>` — fija el país monitoreado para este chat. `/pais reset` vuelve al país por defecto.
 - `/paises` — lista los países activos configurados en la base. Con argumento, también fija el país del chat.

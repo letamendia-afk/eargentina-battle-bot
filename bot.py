@@ -1920,6 +1920,7 @@ async def post_shutdown(application: Application):
 
 AYUDA_USUARIOS = (
     "🌎 <b>AYUDA — eRepublik Battle Tracker</b>\n\n"
+    "/ayuda o /help — Muestra este listado de comandos.\n\n"
     "El bot muestra batallas activas y aplica las órdenes guardadas "
     "por los administradores. Las órdenes aparecen como [AUTO] y "
     "se conservan entre reinicios.\n\n"
@@ -2930,6 +2931,7 @@ def main():
 
     handlers = [
         ("help", help_command),
+        ("ayuda", help_command),
         ("autorizar", autorizar),
         ("desautorizar", desautorizar),
         ("start", start),
