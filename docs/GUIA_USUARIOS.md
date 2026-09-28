@@ -94,6 +94,37 @@ Chile → DEFENSOR
 
 Esto significa que, contra Chile, el objetivo configurado es que gane el defensor.
 
+### Configurar órdenes (solo administradores)
+
+Una orden permanente se guarda por rival y se aplica a las próximas batallas de ese rival, hasta que se cambie o se elimine:
+
+```text
+/orden Chile defensor
+/orden Chile atacante
+```
+
+También se puede usar el ID del país en lugar del nombre. Para eliminarla:
+
+```text
+/sinorden Chile
+```
+
+`defensor`, `def`, `atacante` y `ataque` son formas válidas de indicar el objetivo.
+
+Si hace falta corregir el objetivo de una sola batalla activa, sin tocar la orden permanente, se usa una orden única:
+
+```text
+/ordenunica 123456 defensor
+```
+
+La orden única tiene prioridad para esa batalla, se muestra como `[ÚNICA]` y se elimina cuando termina esa batalla. No se conserva para la siguiente batalla o ronda de la misma TW. Para quitarla antes:
+
+```text
+/sinordenunica 123456
+```
+
+Después de cualquier cambio, `/ordenes` permite revisar las órdenes permanentes y las excepciones activas.
+
 ### `/batallas`
 
 Muestra las batallas activas del país seleccionado. Cuando existe una orden para un rival, la batalla aparece marcada con `[AUTO]` y el objetivo correspondiente.

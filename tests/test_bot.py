@@ -367,7 +367,7 @@ class BotHelpersTest(unittest.TestCase):
 
 
 class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
-    async def test_help_muestra_solo_comandos_publicos(self):
+    async def test_help_muestra_comandos_publicos_y_configuracion_de_ordenes(self):
         update = types.SimpleNamespace(
             message=types.SimpleNamespace(reply_text=AsyncMock()),
         )
@@ -376,14 +376,18 @@ class PaisHandlersTest(unittest.IsolatedAsyncioTestCase):
 
         mensaje = update.message.reply_text.await_args.args[0]
         self.assertIn("/ordenes", mensaje)
+        self.assertIn("/orden &lt;país o ID&gt; defensor|atacante", mensaje)
+        self.assertIn("/sinorden &lt;país o ID&gt;", mensaje)
+        self.assertIn("/ordenunica &lt;ID de batalla&gt; defensor|atacante", mensaje)
+        self.assertIn("/sinordenunica &lt;ID de batalla&gt;", mensaje)
+        self.assertIn("solo administradores", mensaje)
+        self.assertIn("La orden única no modifica la orden permanente", mensaje)
         self.assertIn("/batallas", mensaje)
         self.assertIn("50 puntos", mensaje)
         self.assertIn("100 y 130 puntos", mensaje)
         self.assertIn("chequeo automático", mensaje)
         self.assertIn("🔴 junto a T", mensaje)
         self.assertIn("⚠️ junto a D3", mensaje)
-        self.assertNotIn("/orden ", mensaje)
-        self.assertNotIn("/sinorden", mensaje)
         self.assertNotIn("/alertas", mensaje)
 
     async def test_autorizar_guarda_usuario_para_el_pais_actual(self):
