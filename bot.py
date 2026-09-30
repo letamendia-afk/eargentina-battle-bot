@@ -1427,12 +1427,11 @@ def formatear_ordenes_difusion(
         if not visual["objetivo"]:
             continue
 
+        orden = "SE GANA" if visual["objetivo"] == "GANAR" else "SE PIERDE"
         lineas.append(
             f"{bandera_pais(item['rival_id'])} "
             f"{nombre_pais(item['rival_id'])} — "
-            f"{visual['objetivo']} | "
-            f"T {formatear_score(visual['puntos_pais'])}-"
-            f"{formatear_score(visual['puntos_rival'])}"
+            f"{orden}"
         )
 
     if not lineas:
@@ -2019,7 +2018,7 @@ AYUDA_USUARIOS = (
     "/pais &lt;país&gt; — Cambia el país del chat.\n"
     "/pais reset — Vuelve al país predeterminado.\n"
     "/ordenes — Muestra las órdenes activas.\n"
-    "/difundir — Genera un texto compacto para WhatsApp o el juego, con órdenes y tanteadores.\n"
+    "/difundir — Genera un texto compacto para WhatsApp o el juego, con banderas y órdenes.\n"
     "\n<b>Configurar órdenes (solo administradores)</b>\n"
     "/orden &lt;país o ID&gt; defensor|atacante — Guarda una orden permanente para ese rival.\n"
     "Ejemplo: <code>/orden Chile defensor</code>\n"

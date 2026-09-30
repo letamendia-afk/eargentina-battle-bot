@@ -143,7 +143,7 @@ El objetivo se calcula a partir de la orden guardada y del rol que tenga el paí
 
 ### `/difundir`
 
-Genera un texto compacto, listo para copiar y pegar en WhatsApp o en el juego. Incluye las batallas con una orden activa, la bandera y el nombre del rival, si corresponde `GANAR` o `PERDER`, y el tanteador general. El texto no supera los 500 caracteres.
+Genera un texto compacto, listo para copiar y pegar en WhatsApp o en el juego. Incluye las batallas con una orden activa, la bandera y el nombre del rival, con la orden expresada como `SE GANA` o `SE PIERDE`. El texto no supera los 500 caracteres.
 
 ```text
 /difundir
@@ -154,8 +154,8 @@ Ejemplo:
 ```text
 ORDENES (MIERCOLES 30/09 16:25 — HORA ARGENTINA)
 
-🇨🇱 Chile — PERDER | T 62-118
-🇮🇹 Italia — GANAR | T 139-5
+🇨🇱 Chile — SE PIERDE
+🇮🇹 Italia — SE GANA
 ```
 
 ### Órdenes excepcionales por batalla

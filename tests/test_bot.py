@@ -98,8 +98,10 @@ class BotHelpersTest(unittest.TestCase):
             )
 
         self.assertTrue(texto.startswith("ORDENES (MIERCOLES 30/09 16:25 — HORA ARGENTINA)"))
-        self.assertIn("🇨🇱 Chile — PERDER | T 62-118", texto)
-        self.assertIn("🇮🇹 Italy — GANAR | T 139-5", texto)
+        self.assertIn("🇨🇱 Chile — SE PIERDE", texto)
+        self.assertIn("🇮🇹 Italy — SE GANA", texto)
+        self.assertNotIn("T 62-118", texto)
+        self.assertNotIn("T 139-5", texto)
         self.assertNotIn("France", texto)
         self.assertLessEqual(len(texto), 500)
 
