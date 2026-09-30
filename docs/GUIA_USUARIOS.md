@@ -141,6 +141,23 @@ Chile [AUTO] GANAR
 
 El objetivo se calcula a partir de la orden guardada y del rol que tenga el país monitoreado en esa batalla.
 
+### `/difundir`
+
+Genera un texto compacto, listo para copiar y pegar en WhatsApp o en el juego. Incluye las batallas con una orden activa, la bandera y el nombre del rival, si corresponde `GANAR` o `PERDER`, y el tanteador general. El texto no supera los 500 caracteres.
+
+```text
+/difundir
+```
+
+Ejemplo:
+
+```text
+ORDENES (MIERCOLES 30/09 16:25 — HORA ARGENTINA)
+
+🇨🇱 Chile — PERDER | T 62-118
+🇮🇹 Italia — GANAR | T 139-5
+```
+
 ### Órdenes excepcionales por batalla
 
 Una TW es la guerra completa; dentro de ella pueden existir varias batallas, y cada batalla puede tener distintos rounds o rondas. Un administrador puede cambiar el objetivo de una sola batalla sin modificar la orden general del rival:

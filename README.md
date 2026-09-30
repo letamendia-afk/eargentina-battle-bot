@@ -30,6 +30,7 @@ La guía para usuarios comunes está en [`docs/GUIA_USUARIOS.md`](docs/GUIA_USUA
 - `/ordenunica <ID de batalla> defensor|atacante` — aplica una orden solo a una batalla activa. Solo administradores.
 - `/sinordenunica <ID de batalla>` — elimina una orden excepcional. Solo administradores.
 - `/ordenes` — lista órdenes activas.
+- `/difundir` — genera un texto compacto, de hasta 500 caracteres, para compartir en WhatsApp o el juego. Incluye bandera, rival, orden efectiva y tanteador general, con día, hora y aclaración de hora argentina.
 
 Las órdenes quedan guardadas por rival en PostgreSQL. Por ejemplo, `/orden 64 defensor` mantiene como objetivo que el defensor gane cada vez que aparezca ese rival, hasta usar `/sinorden 64` o reemplazarla con otra orden.
 - `/monitor` — muestra estado del monitor automático.

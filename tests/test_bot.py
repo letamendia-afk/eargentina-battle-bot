@@ -76,6 +76,33 @@ class BotHelpersTest(unittest.TestCase):
         self.assertEqual(bot.formatear_intervalo(300), "5 minutos")
         self.assertEqual(bot.formatear_intervalo(90), "90 segundos")
 
+    def test_formatear_ordenes_difusion_incluye_hora_argentina_y_no_supera_500(self):
+        batallas = [
+            {"rival_id": 64},
+            {"rival_id": 10},
+            {"rival_id": 11},
+        ]
+        visuales = iter(
+            [
+                {"objetivo": "PERDER", "puntos_pais": 62, "puntos_rival": 118},
+                {"objetivo": "GANAR", "puntos_pais": 139, "puntos_rival": 5},
+                {"objetivo": None, "puntos_pais": 0, "puntos_rival": 0},
+            ]
+        )
+
+        with patch.object(bot, "datos_visuales_batalla", side_effect=visuales):
+            texto = bot.formatear_ordenes_difusion(
+                batallas,
+                {},
+                ahora=datetime(2026, 9, 30, 19, 25, tzinfo=timezone.utc),
+            )
+
+        self.assertTrue(texto.startswith("ORDENES (MIERCOLES 30/09 16:25 — HORA ARGENTINA)"))
+        self.assertIn("🇨🇱 Chile — PERDER | T 62-118", texto)
+        self.assertIn("🇮🇹 Italy — GANAR | T 139-5", texto)
+        self.assertNotIn("France", texto)
+        self.assertLessEqual(len(texto), 500)
+
     def test_resolver_monitor_por_texto_matches_known_forms(self):
         fake_monitor = {
             "id": 7,

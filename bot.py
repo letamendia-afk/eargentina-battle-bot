@@ -3,7 +3,7 @@ import re
 import html
 import asyncio
 from functools import partial
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 import requests
@@ -27,6 +27,18 @@ GENERAL_SCORE_ALERT_THRESHOLDS = (50, 100, 130)
 BATTLE_WINNING_SCORE = 150
 GENERAL_SCORE_ERROR_MARKER = "🔴"
 DIVISION_ERROR_MARKER = "⚠️"
+MAX_TEXTO_DIFUSION = 500
+HORA_ARGENTINA = timezone(timedelta(hours=-3))
+
+DIAS_SEMANA = (
+    "LUNES",
+    "MARTES",
+    "MIERCOLES",
+    "JUEVES",
+    "VIERNES",
+    "SABADO",
+    "DOMINGO",
+)
 
 DIVISIONES = {
     3: "D3",
@@ -92,6 +104,24 @@ PAISES = {
     74: "Uruguay", 24: "USA", 28: "Venezuela",
 }
 
+BANDERAS_PAIS = {
+    1: "🇷🇴", 9: "🇧🇷", 10: "🇮🇹", 11: "🇫🇷", 12: "🇩🇪",
+    13: "🇭🇺", 14: "🇨🇳", 15: "🇪🇸", 23: "🇨🇦", 24: "🇺🇸",
+    26: "🇲🇽", 27: "🇦🇷", 28: "🇻🇪", 29: "🇬🇧", 30: "🇨🇭",
+    31: "🇳🇱", 32: "🇧🇪", 33: "🇦🇹", 34: "🇨🇿", 35: "🇵🇱",
+    36: "🇸🇰", 37: "🇳🇴", 38: "🇸🇪", 39: "🇫🇮", 40: "🇺🇦",
+    41: "🇷🇺", 42: "🇧🇬", 43: "🇹🇷", 44: "🇬🇷", 45: "🇯🇵",
+    47: "🇰🇷", 48: "🇮🇳", 49: "🇮🇩", 50: "🇦🇺", 51: "🇿🇦",
+    52: "🇲🇩", 53: "🇵🇹", 54: "🇮🇪", 55: "🇩🇰", 56: "🇮🇷",
+    57: "🇵🇰", 58: "🇮🇱", 59: "🇹🇭", 61: "🇸🇮", 63: "🇭🇷",
+    64: "🇨🇱", 65: "🇷🇸", 66: "🇲🇾", 67: "🇵🇭", 68: "🇸🇬",
+    69: "🇧🇦", 70: "🇪🇪", 71: "🇱🇻", 72: "🇱🇹", 73: "🇰🇵",
+    74: "🇺🇾", 75: "🇵🇾", 76: "🇧🇴", 77: "🇵🇪", 78: "🇨🇴",
+    79: "🇲🇰", 80: "🇲🇪", 81: "🇹🇼", 82: "🇨🇾", 83: "🇧🇾",
+    84: "🇳🇿", 164: "🇸🇦", 165: "🇪🇬", 166: "🇦🇪", 167: "🇦🇱",
+    168: "🇬🇪", 169: "🇦🇲", 170: "🇳🇬", 171: "🇨🇺",
+}
+
 
 # ============================================================
 # UTILIDADES
@@ -116,6 +146,10 @@ def buscar_country_id(nombre):
 
 def nombre_pais(country_id):
     return PAISES.get(int(country_id), f"País {country_id}")
+
+
+def bandera_pais(country_id):
+    return BANDERAS_PAIS.get(int(country_id), "🏳️")
 
 
 def formatear_porcentaje(valor):
@@ -1368,6 +1402,61 @@ def formatear_batalla_pais(item, reglas_campania, ordenes_unicas=None):
     )
 
 
+def formatear_ordenes_difusion(
+    batallas,
+    reglas_campania,
+    ordenes_unicas=None,
+    ahora=None,
+    limite=MAX_TEXTO_DIFUSION,
+):
+    """Genera el texto corto para difundir por WhatsApp o eRepublik."""
+    ahora = ahora or datetime.now(timezone.utc)
+    hora_argentina = ahora.astimezone(HORA_ARGENTINA)
+    encabezado = (
+        f"ORDENES ({DIAS_SEMANA[hora_argentina.weekday()]} "
+        f"{hora_argentina:%d/%m %H:%M} — HORA ARGENTINA)"
+    )
+
+    lineas = []
+    for item in batallas:
+        visual = datos_visuales_batalla(
+            item,
+            reglas_campania,
+            ordenes_unicas,
+        )
+        if not visual["objetivo"]:
+            continue
+
+        lineas.append(
+            f"{bandera_pais(item['rival_id'])} "
+            f"{nombre_pais(item['rival_id'])} — "
+            f"{visual['objetivo']} | "
+            f"T {formatear_score(visual['puntos_pais'])}-"
+            f"{formatear_score(visual['puntos_rival'])}"
+        )
+
+    if not lineas:
+        return encabezado + "\n\nNo hay órdenes activas."
+
+    resultado = encabezado
+    restantes = 0
+    for indice, linea in enumerate(lineas):
+        candidato = resultado + "\n\n" + linea
+        if len(candidato) > limite:
+            restantes = len(lineas) - indice
+            break
+        resultado = candidato
+
+    if restantes:
+        aviso = f"\n\n... (+{restantes} ordenes)"
+        if len(resultado) + len(aviso) <= limite:
+            resultado += aviso
+        else:
+            resultado = resultado[:limite - len(aviso)] + aviso
+
+    return resultado
+
+
 # ============================================================
 # MONITOR AUTOMÁTICO
 # ============================================================
@@ -1930,6 +2019,7 @@ AYUDA_USUARIOS = (
     "/pais &lt;país&gt; — Cambia el país del chat.\n"
     "/pais reset — Vuelve al país predeterminado.\n"
     "/ordenes — Muestra las órdenes activas.\n"
+    "/difundir — Genera un texto compacto para WhatsApp o el juego, con órdenes y tanteadores.\n"
     "\n<b>Configurar órdenes (solo administradores)</b>\n"
     "/orden &lt;país o ID&gt; defensor|atacante — Guarda una orden permanente para ese rival.\n"
     "Ejemplo: <code>/orden Chile defensor</code>\n"
@@ -2389,6 +2479,7 @@ async def start(
         "/pais <país> - Cambia el país de este chat\n"
         "/paises - Lista países activos\n"
         "/ordenes - Órdenes actuales\n"
+        "/difundir - Texto listo para difundir\n"
         "/monitor - Estado del monitor automático\n"
         "/alertas on|off - Activar/desactivar alertas\n"
         "/intervalo N - Segundos entre revisiones\n"
@@ -2487,6 +2578,37 @@ async def mostrar_batallas(
     except Exception as exc:
         await update.message.reply_text(
             "❌ Error en /batallas\n\n"
+            f"{type(exc).__name__}: {exc}"
+        )
+
+
+async def difundir_ordenes(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    try:
+        monitor = resolver_monitor_contexto(update)
+        reglas = obtener_reglas_campania(monitor["id"])
+        batallas = buscar_batallas_pais(
+            consultar_campanas(),
+            monitor["erepublik_country_id"],
+        )
+        limpiar_ordenes_unicas(
+            monitor["id"],
+            [item["battle_id"] for item in batallas],
+        )
+        ordenes_unicas = obtener_ordenes_unicas(monitor["id"])
+
+        await update.message.reply_text(
+            formatear_ordenes_difusion(
+                batallas,
+                reglas,
+                ordenes_unicas,
+            )
+        )
+    except Exception as exc:
+        await update.message.reply_text(
+            "❌ Error en /difundir\n\n"
             f"{type(exc).__name__}: {exc}"
         )
 
@@ -2953,6 +3075,7 @@ def main():
         ("ordenunica", ordenunica),
         ("sinordenunica", sinordenunica),
         ("ordenes", ordenes),
+        ("difundir", difundir_ordenes),
         ("test", test),
         ("batallas", mostrar_batallas),
         ("vacias", mostrar_batallas_vacias),
