@@ -105,6 +105,37 @@ class BotHelpersTest(unittest.TestCase):
         self.assertNotIn("France", texto)
         self.assertLessEqual(len(texto), 500)
 
+    def test_formatear_reporte_monitor_agrupa_perder_ganar_y_sin_orden(self):
+        batallas = [
+            {"battle_id": 1},
+            {"battle_id": 2},
+            {"battle_id": 3},
+        ]
+        objetivos = {
+            1: {"objetivo": None},
+            2: {"objetivo": "GANAR"},
+            3: {"objetivo": "PERDER"},
+        }
+
+        with patch.object(
+            bot,
+            "datos_visuales_batalla",
+            side_effect=lambda item, *_args: objetivos[item["battle_id"]],
+        ), patch.object(
+            bot,
+            "formatear_batalla_pais",
+            side_effect=lambda item, *_args: f"B{item['battle_id']}",
+        ):
+            reporte = bot.formatear_reporte_monitor(
+                {"name": "Argentina"},
+                batallas,
+                {},
+            )
+
+        self.assertIn("Batallas activas: 3", reporte)
+        self.assertLess(reporte.index("B3"), reporte.index("B2"))
+        self.assertLess(reporte.index("B2"), reporte.index("B1"))
+
     def test_resolver_monitor_por_texto_matches_known_forms(self):
         fake_monitor = {
             "id": 7,

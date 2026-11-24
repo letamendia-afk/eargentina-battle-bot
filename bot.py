@@ -1614,13 +1614,22 @@ def formatear_reporte_monitor(
     ordenes_unicas=None,
 ):
     """Construye el reporte periódico, incluso cuando no hay alertas."""
+    def prioridad(item):
+        objetivo = datos_visuales_batalla(
+            item,
+            reglas_campania,
+            ordenes_unicas,
+        )["objetivo"]
+        return {"PERDER": 0, "GANAR": 1}.get(objetivo, 2)
+
+    batallas_ordenadas = sorted(batallas, key=prioridad)
     encabezado = [
         f"📡 <b>CHEQUEO AUTOMÁTICO — {html.escape(monitor['name'])}</b>",
-        f"Batallas con orden: {len(batallas)}",
+        f"Batallas activas: {len(batallas)}",
     ]
 
     if not batallas:
-        encabezado.append("No hay batallas activas con una orden cargada.")
+        encabezado.append("No hay batallas activas.")
         return "\n".join(encabezado)
 
     return "\n\n".join(
@@ -1631,7 +1640,7 @@ def formatear_reporte_monitor(
                 reglas_campania,
                 ordenes_unicas,
             )
-            for item in batallas
+            for item in batallas_ordenadas
         ]
     )
 
@@ -2752,7 +2761,10 @@ async def monitor_status(
             f"Última revisión: {last_check}\n"
             f"Último error: {last_error}\n\n"
             "El chequeo periódico se envía al chat configurado y "
-            "solo incluye campañas con una orden activa."
+            "muestra primero las batallas con objetivo PERDER, luego "
+            "las de GANAR y finalmente las que no tienen orden. "
+            "Las alertas especiales solo se generan para batallas con "
+            "una orden activa."
         )
 
     except Exception as exc:
