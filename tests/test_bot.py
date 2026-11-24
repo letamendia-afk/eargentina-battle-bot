@@ -78,14 +78,14 @@ class BotHelpersTest(unittest.TestCase):
 
     def test_formatear_ordenes_difusion_incluye_hora_argentina_y_no_supera_500(self):
         batallas = [
-            {"rival_id": 64},
             {"rival_id": 10},
+            {"rival_id": 64},
             {"rival_id": 11},
         ]
         visuales = iter(
             [
-                {"objetivo": "PERDER", "puntos_pais": 62, "puntos_rival": 118},
                 {"objetivo": "GANAR", "puntos_pais": 139, "puntos_rival": 5},
+                {"objetivo": "PERDER", "puntos_pais": 62, "puntos_rival": 118},
                 {"objetivo": None, "puntos_pais": 0, "puntos_rival": 0},
             ]
         )
@@ -100,6 +100,10 @@ class BotHelpersTest(unittest.TestCase):
         self.assertTrue(texto.startswith("ORDENES (MIERCOLES 30/09 16:25 — HORA ARGENTINA)"))
         self.assertIn("🇨🇱 Chile — SE PIERDE", texto)
         self.assertIn("🇮🇹 Italy — SE GANA", texto)
+        self.assertLess(
+            texto.index("🇨🇱 Chile"),
+            texto.index("🇮🇹 Italy"),
+        )
         self.assertNotIn("T 62-118", texto)
         self.assertNotIn("T 139-5", texto)
         self.assertNotIn("France", texto)

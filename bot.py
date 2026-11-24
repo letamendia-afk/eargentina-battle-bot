@@ -1417,7 +1417,7 @@ def formatear_ordenes_difusion(
         f"{hora_argentina:%d/%m %H:%M} — HORA ARGENTINA)"
     )
 
-    lineas = []
+    ordenadas = []
     for item in batallas:
         visual = datos_visuales_batalla(
             item,
@@ -1426,6 +1426,15 @@ def formatear_ordenes_difusion(
         )
         if not visual["objetivo"]:
             continue
+
+        prioridad = {"PERDER": 0, "GANAR": 1}.get(
+            visual["objetivo"],
+            2,
+        )
+        ordenadas.append((prioridad, item, visual))
+
+    lineas = []
+    for _, item, visual in sorted(ordenadas, key=lambda valor: valor[0]):
 
         orden = "SE GANA" if visual["objetivo"] == "GANAR" else "SE PIERDE"
         lineas.append(
